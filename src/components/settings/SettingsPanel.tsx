@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Settings as SettingsIcon,
   Palette,
@@ -23,6 +23,7 @@ import { useJarvisState } from "@/hooks/useJarvisState";
 import { cn } from "@/lib/utils/cn";
 import { logAuditEvent } from "@/lib/security/auditLog";
 import { eventBus } from "@/lib/events/bus";
+import { listAutomations } from "@/lib/automation/client";
 import type { JarvisSettings } from "@/types/jarvis";
 
 const TABS = [
@@ -72,6 +73,11 @@ export function SettingsPanel() {
 
   const [activeTab, setActiveTab] = useState<TabId>("general");
   const [resetOpen, setResetOpen] = useState(false);
+  const [n8nConnected, setN8nConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    listAutomations().then((workflows) => setN8nConnected(workflows.length > 0));
+  }, []);
 
   function set<K extends keyof JarvisSettings>(key: K, value: JarvisSettings[K]) {
     updateSettings({ [key]: value } as Partial<JarvisSettings>);
@@ -308,6 +314,27 @@ export function SettingsPanel() {
                 >
                   {aiConnection.toUpperCase()}
                 </span>
+              </SettingRow>
+              <SettingRow label="N8N Automation" description="Read-only status">
+                <span
+                  className={cn(
+                    "font-technical text-xs tracking-[0.1em]",
+                    n8nConnected === null ? "text-text-muted" : n8nConnected ? "text-success" : "text-text-muted"
+                  )}
+                >
+                  {n8nConnected === null ? "CHECKING…" : n8nConnected ? "CONNECTED" : "NOT CONNECTED"}
+                </span>
+              </SettingRow>
+              <SettingRow label="Memory Provider" description="Where stored memory records live">
+                <Select
+                  value={settings.memoryProvider}
+                  onChange={(v) => set("memoryProvider", v as JarvisSettings["memoryProvider"])}
+                  options={[
+                    { value: "local", label: "Local (browser storage)" },
+                    { value: "supabase", label: "Supabase (Postgres)" },
+                    { value: "vector", label: "Vector search (not yet available)" },
+                  ]}
+                />
               </SettingRow>
               <SettingRow label="Debug Mode" description="Verbose console logging">
                 <ToggleSwitch checked={settings.debugMode} onChange={(v) => set("debugMode", v)} label="Debug Mode" />
