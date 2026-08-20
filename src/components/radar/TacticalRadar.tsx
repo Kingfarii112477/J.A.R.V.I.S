@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Crosshair, Radar as RadarIcon, AlertTriangle } from "lucide-react";
+import { Crosshair, Radar as RadarIcon, AlertTriangle, Info } from "lucide-react";
 import { HudPanel } from "@/components/hud/HudPanel";
 import { Sparkline } from "@/components/hud/Sparkline";
 import { RadarCanvas } from "./RadarCanvas";
@@ -24,6 +24,14 @@ export function TacticalRadar() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex items-start gap-2 rounded-lg border border-orange/20 bg-panel-strong px-3 py-2.5">
+        <Info size={14} className="mt-0.5 shrink-0 text-orange" />
+        <p className="font-technical text-[10px] leading-relaxed tracking-[0.02em] text-text-secondary">
+          TACTICAL FEED SIMULATION — targets and signal readings below are generated locally, not sourced from a
+          real sensor or network scan.
+        </p>
+      </div>
+
       <HudPanel variant="tactical" corners className="flex flex-col items-center py-4">
         <div className="mb-2 flex items-center gap-2 text-orange">
           <RadarIcon size={16} className="animate-spin-slow" />

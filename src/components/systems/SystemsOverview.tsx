@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BrainCircuit, Mic, Database, ShieldCheck, Atom, Crosshair, ChevronDown, Zap } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { JarvisCore } from "@/components/3d/JarvisCore";
 import { HudPanel } from "@/components/hud/HudPanel";
+import { DataSourceBadge } from "@/components/common/DataSourceBadge";
 import { ResearchPanel } from "./ResearchPanel";
+import { listAutomations } from "@/lib/automation/client";
 import { useJarvisStore } from "@/store/jarvisStore";
 import { useJarvisState } from "@/hooks/useJarvisState";
 import type { SubsystemId } from "@/types/jarvis";
@@ -32,7 +34,13 @@ export function SystemsOverview() {
   const subsystems = useJarvisStore((s) => s.subsystems);
   const protocols = useJarvisStore((s) => s.protocols);
   const diagnosticsRunning = useJarvisStore((s) => s.diagnosticsRunning);
+  const aiConnection = useJarvisStore((s) => s.aiConnection);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [n8nConnected, setN8nConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    listAutomations().then((workflows) => setN8nConnected(workflows.length > 0));
+  }, []);
 
   const avgHealth = Math.round(subsystems.reduce((sum, s) => sum + s.health, 0) / subsystems.length);
   const allOnline = subsystems.every((s) => s.state === "ONLINE");
@@ -116,6 +124,18 @@ export function SystemsOverview() {
             </div>
           ))}
         </HudPanel>
+      </div>
+
+      <div className="px-1">
+        <p className="font-technical mb-2 text-[10px] tracking-[0.2em] text-text-muted">DATA SOURCES</p>
+        <div className="flex flex-col gap-2">
+          <DataSourceBadge
+            label="AI CORE"
+            status={aiConnection === "connected" ? "connected" : aiConnection === "unknown" ? "unavailable" : "simulated"}
+          />
+          <DataSourceBadge label="NETWORK / TELEMETRY" status="simulated" />
+          <DataSourceBadge label="N8N AUTOMATION" status={n8nConnected === null ? "unavailable" : n8nConnected ? "connected" : "not-connected"} />
+        </div>
       </div>
 
       <ResearchPanel />

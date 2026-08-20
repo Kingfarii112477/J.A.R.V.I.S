@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, MessageSquare, Mic, Activity, Radar } from "lucide-react";
+import { ChevronRight, MessageSquare, Mic, Activity, Radar, Info } from "lucide-react";
 import { JarvisCore } from "@/components/3d/JarvisCore";
 import { HudPanel } from "@/components/hud/HudPanel";
 import { MetricCard } from "@/components/hud/MetricCard";
@@ -139,6 +139,14 @@ export function Dashboard() {
         <MetricCard label="NEURAL ACTIVITY" value={telemetry.neuralActivity} color="#8b5cf6" sparklineVariant="bars" />
         <MetricCard label="AI STABILITY" value={telemetry.aiStability} color="#3b82f6" sparklineVariant="bars" />
         <MetricCard label="SIGNAL STRENGTH" value={telemetry.signalStrength} color="#67e8f9" sparklineVariant="bars" />
+      </div>
+
+      <div className="flex items-start gap-2 rounded-lg border border-cyan/15 bg-panel-strong px-3 py-2.5">
+        <Info size={14} className="mt-0.5 shrink-0 text-cyan" />
+        <p className="font-technical text-[10px] leading-relaxed tracking-[0.02em] text-text-secondary">
+          TELEMETRY SIMULATION — the metrics above are generated locally, not read from real hardware or network
+          sensors. See Systems → Data Sources for what&apos;s actually connected.
+        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:hidden">

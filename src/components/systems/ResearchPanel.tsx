@@ -3,9 +3,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Search, Globe, ExternalLink, Loader2, AlertTriangle } from "lucide-react";
 import { HudPanel } from "@/components/hud/HudPanel";
+import { DataSourceBadge } from "@/components/common/DataSourceBadge";
 import { searchWeb, getResearchStatus, type ResearchStatus } from "@/lib/research/client";
 import type { ResearchResult } from "@/lib/research/provider";
-import { cn } from "@/lib/utils/cn";
 
 type QueryState = "idle" | "loading" | "done" | "error";
 
@@ -54,17 +54,16 @@ export function ResearchPanel() {
 
   return (
     <div className="px-1">
-      <div className="mb-2 flex items-center justify-between">
-        <p className="font-technical text-[10px] tracking-[0.2em] text-text-muted">RESEARCH AGENT</p>
-        <span
-          className={cn(
-            "font-technical rounded-full border px-2 py-0.5 text-[9px] tracking-[0.1em]",
-            connected ? "border-success/30 text-success" : "border-text-muted/30 text-text-muted"
-          )}
-        >
-          {status === null ? "CHECKING…" : connected ? `CONNECTED — ${status.label}` : "NOT CONNECTED"}
-        </span>
-      </div>
+      <p className="font-technical mb-2 text-[10px] tracking-[0.2em] text-text-muted">RESEARCH AGENT</p>
+
+      {status !== null && (
+        <DataSourceBadge
+          label="WEB SEARCH"
+          status={connected ? "connected" : "not-connected"}
+          detail={connected ? status.label ?? undefined : undefined}
+          className="mb-2"
+        />
+      )}
 
       <HudPanel className="flex flex-col gap-3">
         <form onSubmit={handleSearch} className="flex items-center gap-2">
