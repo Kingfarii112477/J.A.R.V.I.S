@@ -7,7 +7,8 @@ import { useJarvisState } from "@/hooks/useJarvisState";
 import { useAI } from "@/hooks/useAI";
 import { dispatchCommand } from "@/lib/commands/dispatcher";
 import { generateId, getSessionId } from "@/lib/utils/id";
-import { getTTSProvider } from "@/lib/voice/tts";
+import { getTTSProvider, browserTTSProvider } from "@/lib/voice/tts";
+import { eventBus } from "@/lib/events/bus";
 import { memoryClient } from "@/lib/memory/client";
 import { extractMemoriesFromText } from "@/lib/memory/extraction";
 import { executeTool } from "@/lib/tools";
@@ -29,6 +30,7 @@ export function useMessagePipeline() {
   const addMessage = useJarvisStore((s) => s.addMessage);
   const updateMessage = useJarvisStore((s) => s.updateMessage);
   const settings = useJarvisStore((s) => s.settings);
+  const pushToast = useJarvisStore((s) => s.pushToast);
 
   const { state: jarvisState, goThinking, goSpeaking, goProcessing, goIdle, goError } = useJarvisState();
   const { send, stop } = useAI();
@@ -38,16 +40,38 @@ export function useMessagePipeline() {
   const sessionId = useRef(getSessionId());
   const pendingToolsRef = useRef<Map<string, ToolRouteMatch>>(new Map());
 
-  function speak(text: string, onEnd?: () => void) {
+  function speak(text: string, onEnd?: () => void, isFallback = false) {
     if (!settings.autoSpeak || !settings.voiceEnabled) {
       onEnd?.();
       return;
     }
-    getTTSProvider().speak(text, {
+    const provider = getTTSProvider(isFallback ? "browser" : settings.ttsProvider);
+    eventBus.emit("voice.speaking", { text });
+    provider.speak(text, {
       rate: settings.voiceRate,
       pitch: settings.voicePitch,
       onEnd: () => onEnd?.(),
+      onError: (message, code) => {
+        // A configured server TTS provider that isn't actually set up on
+        // the server falls back to the browser voice once, visibly.
+        if (code === "unavailable" && !isFallback && settings.ttsProvider !== "browser") {
+          pushToast(`${message} Falling back to built-in speech.`, "warning");
+          speak(text, onEnd, true);
+          return;
+        }
+        onEnd?.();
+      },
     });
+  }
+
+  /** Interrupts whatever is currently being spoken — cancels both the
+   * configured provider and the browser fallback (harmless no-op if
+   * neither is active) so a mid-fallback interrupt still stops audio. */
+  function stopSpeaking() {
+    getTTSProvider(settings.ttsProvider).cancel();
+    browserTTSProvider.cancel();
+    eventBus.emit("voice.interrupted", {});
+    goIdle();
   }
 
   /** Fire-and-forget: only stores memories the extractor actually
@@ -231,5 +255,5 @@ export function useMessagePipeline() {
     runAIPath(text, history, onFinalText);
   }
 
-  return { sendMessage, runAIPath, confirmTool, cancelTool, generating, stop, speak };
+  return { sendMessage, runAIPath, confirmTool, cancelTool, generating, stop, speak, stopSpeaking };
 }

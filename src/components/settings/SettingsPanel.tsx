@@ -190,6 +190,28 @@ export function SettingsPanel() {
               <SettingRow label="Auto Speak" description="Read AI responses aloud">
                 <ToggleSwitch checked={settings.autoSpeak} onChange={(v) => set("autoSpeak", v)} label="Auto Speak" />
               </SettingRow>
+              <SettingRow label="Speech Recognition" description="Browser works with no setup; Whisper/AssemblyAI need a server key and fall back automatically if missing">
+                <Select
+                  value={settings.sttProvider}
+                  onChange={(v) => set("sttProvider", v as JarvisSettings["sttProvider"])}
+                  options={[
+                    { value: "browser", label: "Browser (built-in)" },
+                    { value: "whisper", label: "Whisper (OpenAI)" },
+                    { value: "assemblyai", label: "AssemblyAI" },
+                  ]}
+                />
+              </SettingRow>
+              <SettingRow label="Speech Synthesis" description="Browser works with no setup; OpenAI/ElevenLabs need a server key and fall back automatically if missing">
+                <Select
+                  value={settings.ttsProvider}
+                  onChange={(v) => set("ttsProvider", v as JarvisSettings["ttsProvider"])}
+                  options={[
+                    { value: "browser", label: "Browser (built-in)" },
+                    { value: "openai", label: "OpenAI TTS" },
+                    { value: "elevenlabs", label: "ElevenLabs" },
+                  ]}
+                />
+              </SettingRow>
               <SettingRow label="Voice Rate" description={settings.voiceRate.toFixed(1) + "x"} stacked>
                 <SliderControl value={settings.voiceRate} min={0.5} max={1.8} step={0.1} onChange={(v) => set("voiceRate", v)} ariaLabel="Voice rate" />
               </SettingRow>

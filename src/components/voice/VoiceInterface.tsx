@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Mic, MicOff, AlertTriangle, MessageSquare } from "lucide-react";
+import { Mic, MicOff, AlertTriangle, MessageSquare, Square } from "lucide-react";
 import { JarvisCore } from "@/components/3d/JarvisCore";
 import { HudPanel } from "@/components/hud/HudPanel";
 import { VoiceVisualizer } from "./VoiceVisualizer";
@@ -14,7 +14,19 @@ import { cn } from "@/lib/utils/cn";
 
 export function VoiceInterface() {
   const router = useRouter();
-  const { state, transcript, interim, levels, errorMsg, supported, startListening, stopAndSubmit, cancel } = useVoice();
+  const {
+    state,
+    transcript,
+    interim,
+    confidence,
+    levels,
+    errorMsg,
+    supported,
+    startListening,
+    stopAndSubmit,
+    cancel,
+    stopSpeaking,
+  } = useVoice();
   const quality = useJarvisStore((s) => s.settings.graphicsQuality);
   const voiceEnabled = useJarvisStore((s) => s.settings.voiceEnabled);
   const messages = useJarvisStore((s) => s.messages);
@@ -26,6 +38,8 @@ export function VoiceInterface() {
   function handleTap() {
     if (listening) {
       stopAndSubmit();
+    } else if (state === "SPEAKING") {
+      stopSpeaking();
     } else if (!busy) {
       startListening();
     } else {
@@ -98,7 +112,22 @@ export function VoiceInterface() {
               {transcript}
               <span className="text-text-muted">{interim ? ` ${interim}` : ""}</span>
             </p>
+            {confidence !== null && !listening && (
+              <p className="font-technical mt-1 text-[10px] tracking-[0.1em] text-text-muted">
+                CONFIDENCE: {Math.round(confidence * 100)}%
+              </p>
+            )}
           </div>
+        )}
+
+        {state === "SPEAKING" && (
+          <button
+            type="button"
+            onClick={stopSpeaking}
+            className="font-technical mt-4 flex items-center gap-1.5 rounded-full border border-warning/30 px-3 py-1.5 text-[10px] tracking-[0.1em] text-warning hover:bg-warning/10"
+          >
+            <Square size={11} /> STOP SPEAKING
+          </button>
         )}
 
         {!listening && !busy && lastAssistant && (
