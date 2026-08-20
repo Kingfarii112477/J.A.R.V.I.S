@@ -1,0 +1,232 @@
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import type {
+  ChatMessage,
+  JarvisSettings,
+  JarvisState,
+  Protocol,
+  RadarTarget,
+  Subsystem,
+  TelemetrySnapshot,
+  TerminalLine,
+} from "@/types/jarvis";
+
+export const defaultSettings: JarvisSettings = {
+  aiName: "J.A.R.V.I.S.",
+  language: "English",
+  theme: "cybernetic-blue",
+  holographicEffects: true,
+  interfaceOpacity: 90,
+  animations: true,
+  dataAnalytics: true,
+  graphicsQuality: "high",
+
+  voiceEnabled: true,
+  autoSpeak: true,
+  voicePitch: 1,
+  voiceRate: 1,
+  soundEffects: true,
+  soundVolume: 60,
+
+  aiPersonalityVerbosity: "balanced",
+  aiAddressUser: "",
+  proactiveSuggestions: true,
+
+  lockScreenEnabled: false,
+  sessionTimeoutMinutes: 15,
+
+  notificationsEnabled: true,
+  notifyOnThreat: true,
+  notifyOnDiagnostics: true,
+
+  reducedMotion: false,
+  skipBootAnimation: false,
+  debugMode: false,
+};
+
+export const defaultSubsystems: Subsystem[] = [
+  { id: "neuralCore", label: "Neural Core", state: "ONLINE", health: 98, latencyMs: 12, activity: 62 },
+  { id: "voiceSystem", label: "Voice System", state: "ONLINE", health: 96, latencyMs: 98, activity: 24 },
+  { id: "memoryBank", label: "Memory Bank", state: "ONLINE", health: 99, latencyMs: 8, activity: 41 },
+  { id: "securityGrid", label: "Security Grid", state: "ONLINE", health: 100, latencyMs: 5, activity: 18 },
+  { id: "quantumLink", label: "Quantum Link", state: "ONLINE", health: 94, latencyMs: 31, activity: 55 },
+  { id: "tacticalMatrix", label: "Tactical Matrix", state: "ONLINE", health: 97, latencyMs: 22, activity: 33 },
+];
+
+export const defaultProtocols: Protocol[] = [
+  { id: "neural-protection", label: "Neural Protection", status: "ACTIVE", health: 99, lastUpdate: Date.now() },
+  { id: "quantum-encryption", label: "Quantum Encryption", status: "ACTIVE", health: 100, lastUpdate: Date.now() },
+  { id: "network-defense", label: "Network Defense", status: "ACTIVE", health: 97, lastUpdate: Date.now() },
+  { id: "threat-detection", label: "Threat Detection", status: "ACTIVE", health: 95, lastUpdate: Date.now() },
+  { id: "data-sync", label: "Data Synchronization", status: "ACTIVE", health: 98, lastUpdate: Date.now() },
+  { id: "power-core", label: "Power Core Regulation", status: "ACTIVE", health: 99, lastUpdate: Date.now() },
+  { id: "thermal-reg", label: "Thermal Regulation", status: "ACTIVE", health: 96, lastUpdate: Date.now() },
+  { id: "voice-uplink", label: "Voice Uplink", status: "STANDBY", health: 90, lastUpdate: Date.now() },
+];
+
+export const initialTelemetry: TelemetrySnapshot = {
+  cpu: 42,
+  memory: 55,
+  neuralActivity: 68,
+  aiStability: 97,
+  signalStrength: 88,
+  networkStability: 91,
+  voiceLatencyMs: 90,
+  aiResponseMs: 140,
+  dataFlow: 72,
+  power: 96,
+  threatLevel: 4,
+};
+
+interface JarvisStore {
+  state: JarvisState;
+  previousState: JarvisState;
+  setState: (s: JarvisState) => void;
+
+  secured: boolean;
+  setSecured: (v: boolean) => void;
+  locked: boolean;
+  setLocked: (v: boolean) => void;
+
+  booted: boolean;
+  setBooted: (v: boolean) => void;
+
+  settings: JarvisSettings;
+  updateSettings: (patch: Partial<JarvisSettings>) => void;
+  resetSettings: () => void;
+
+  messages: ChatMessage[];
+  addMessage: (m: ChatMessage) => void;
+  updateMessage: (id: string, patch: Partial<ChatMessage>) => void;
+  clearMessages: () => void;
+
+  terminalLines: TerminalLine[];
+  pushTerminalLine: (l: Omit<TerminalLine, "id" | "timestamp">) => void;
+  clearTerminal: () => void;
+
+  telemetry: TelemetrySnapshot;
+  setTelemetry: (t: TelemetrySnapshot) => void;
+
+  subsystems: Subsystem[];
+  setSubsystem: (id: string, patch: Partial<Subsystem>) => void;
+
+  protocols: Protocol[];
+
+  radarTargets: RadarTarget[];
+  setRadarTargets: (t: RadarTarget[]) => void;
+
+  diagnosticsRunning: boolean;
+  diagnosticsProgress: number;
+  diagnosticsScore: number;
+  lastDiagnosticsRun: number | null;
+  setDiagnostics: (patch: Partial<{
+    diagnosticsRunning: boolean;
+    diagnosticsProgress: number;
+    diagnosticsScore: number;
+    lastDiagnosticsRun: number | null;
+  }>) => void;
+
+  aiConnection: "unknown" | "connected" | "demo" | "error";
+  setAiConnection: (v: "unknown" | "connected" | "demo" | "error") => void;
+
+  toasts: { id: string; message: string; variant: "info" | "success" | "warning" | "error" }[];
+  pushToast: (message: string, variant?: "info" | "success" | "warning" | "error") => void;
+  dismissToast: (id: string) => void;
+}
+
+let idCounter = 0;
+function nextId(prefix: string) {
+  idCounter += 1;
+  return `${prefix}-${Date.now().toString(36)}-${idCounter}`;
+}
+
+export const useJarvisStore = create<JarvisStore>()(
+  persist(
+    (set) => ({
+      state: "BOOTING",
+      previousState: "BOOTING",
+      setState: (s) =>
+        set((prev) => ({ previousState: prev.state, state: s })),
+
+      secured: true,
+      setSecured: (v) => set({ secured: v }),
+      locked: false,
+      setLocked: (v) => set({ locked: v }),
+
+      booted: false,
+      setBooted: (v) => set({ booted: v }),
+
+      settings: defaultSettings,
+      updateSettings: (patch) =>
+        set((prev) => ({ settings: { ...prev.settings, ...patch } })),
+      resetSettings: () => set({ settings: defaultSettings }),
+
+      messages: [],
+      addMessage: (m) => set((prev) => ({ messages: [...prev.messages, m] })),
+      updateMessage: (id, patch) =>
+        set((prev) => ({
+          messages: prev.messages.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+        })),
+      clearMessages: () => set({ messages: [] }),
+
+      terminalLines: [],
+      pushTerminalLine: (l) =>
+        set((prev) => ({
+          terminalLines: [
+            ...prev.terminalLines,
+            { ...l, id: nextId("term"), timestamp: Date.now() },
+          ].slice(-500),
+        })),
+      clearTerminal: () => set({ terminalLines: [] }),
+
+      telemetry: initialTelemetry,
+      setTelemetry: (t) => set({ telemetry: t }),
+
+      subsystems: defaultSubsystems,
+      setSubsystem: (id, patch) =>
+        set((prev) => ({
+          subsystems: prev.subsystems.map((s) => (s.id === id ? { ...s, ...patch } : s)),
+        })),
+
+      protocols: defaultProtocols,
+
+      radarTargets: [],
+      setRadarTargets: (t) => set({ radarTargets: t }),
+
+      diagnosticsRunning: false,
+      diagnosticsProgress: 0,
+      diagnosticsScore: 98,
+      lastDiagnosticsRun: null,
+      setDiagnostics: (patch) => set(patch),
+
+      aiConnection: "unknown",
+      setAiConnection: (v) => set({ aiConnection: v }),
+
+      toasts: [],
+      pushToast: (message, variant = "info") =>
+        set((prev) => ({ toasts: [...prev.toasts, { id: nextId("toast"), message, variant }] })),
+      dismissToast: (id) => set((prev) => ({ toasts: prev.toasts.filter((t) => t.id !== id) })),
+    }),
+    {
+      name: "jarvis-os-store",
+      partialize: (state) => ({
+        settings: state.settings,
+        secured: state.secured,
+      }),
+      // Zustand's default merge is a shallow Object.assign at the top
+      // level, so a persisted `settings` object from an older schema
+      // (missing fields added in a later version) would otherwise
+      // *replace* defaultSettings entirely, leaving new fields undefined.
+      // Deep-merge settings specifically so partial/stale storage never
+      // breaks the app.
+      merge: (persisted, current) => {
+        const persistedState = (persisted ?? {}) as Partial<JarvisStore>;
+        return {
+          ...current,
+          ...persistedState,
+          settings: { ...current.settings, ...(persistedState.settings ?? {}) },
+        };
+      },
+    }
+  )
+);

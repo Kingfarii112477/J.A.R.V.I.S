@@ -1,0 +1,248 @@
+@import "tailwindcss";
+
+@theme {
+  /* Core surfaces */
+  --color-void: #020409;
+  --color-bg: #04070f;
+  --color-bg-elevated: #070c1a;
+  --color-panel: #0a1120;
+  --color-panel-strong: #0d1626;
+
+  /* Signal colors */
+  --color-cyan: #22d3ee;
+  --color-cyan-soft: #67e8f9;
+  --color-cyan-dim: #0e7490;
+  --color-blue: #3b82f6;
+  --color-blue-deep: #1d4ed8;
+  --color-violet: #8b5cf6;
+  --color-violet-deep: #6d28d9;
+  --color-magenta: #d946ef;
+  --color-orange: #ff5500;
+  --color-orange-soft: #ff8a4c;
+  --color-success: #34d399;
+  --color-warning: #f5b942;
+  --color-danger: #ef4444;
+
+  /* Text */
+  --color-text-primary: #eaf3ff;
+  --color-text-secondary: #8fa5c4;
+  --color-text-muted: #526180;
+
+  --font-display: var(--font-orbitron), "Orbitron", ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-inter), "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-technical: var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
+
+  --animate-pulse-slow: pulse-slow 3.2s ease-in-out infinite;
+  --animate-spin-slow: spin-slow 18s linear infinite;
+  --animate-spin-reverse: spin-reverse 24s linear infinite;
+  --animate-scan: scan 4s linear infinite;
+  --animate-flicker: flicker 2.4s ease-in-out infinite;
+}
+
+@layer base {
+  * {
+    border-color: rgba(103, 232, 249, 0.12);
+  }
+
+  html {
+    color-scheme: dark;
+    background: var(--color-void);
+  }
+
+  body {
+    background: var(--color-bg);
+    color: var(--color-text-primary);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: rgba(34, 211, 238, 0.35);
+    color: #ffffff;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(56, 189, 248, 0.25);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(56, 189, 248, 0.4);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-cyan);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: 0.14em;
+  }
+  .font-technical {
+    font-family: var(--font-technical);
+  }
+
+  /* Glass HUD panel */
+  .hud-panel {
+    background: linear-gradient(180deg, rgba(13, 24, 43, 0.68) 0%, rgba(6, 12, 24, 0.72) 100%);
+    border: 1px solid rgba(103, 232, 249, 0.16);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.03),
+      0 0 0 1px rgba(0, 0, 0, 0.2),
+      0 12px 32px -16px rgba(0, 0, 0, 0.6);
+  }
+
+  .hud-panel-tactical {
+    background: linear-gradient(180deg, rgba(30, 15, 4, 0.55) 0%, rgba(10, 6, 2, 0.7) 100%);
+    border: 1px solid rgba(255, 85, 0, 0.28);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .glow-cyan {
+    box-shadow: 0 0 24px -4px rgba(34, 211, 238, 0.45);
+  }
+  .glow-orange {
+    box-shadow: 0 0 24px -4px rgba(255, 85, 0, 0.5);
+  }
+  .glow-violet {
+    box-shadow: 0 0 24px -4px rgba(139, 92, 246, 0.45);
+  }
+
+  .text-glow {
+    text-shadow: 0 0 12px currentColor;
+  }
+
+  /* Circuit-trace backdrop */
+  .circuit-field {
+    position: relative;
+    isolation: isolate;
+  }
+  .circuit-field::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    background-image:
+      radial-gradient(ellipse 80% 60% at 50% 0%, rgba(59, 130, 246, 0.12), transparent 60%),
+      radial-gradient(ellipse 60% 50% at 100% 100%, rgba(139, 92, 246, 0.08), transparent 60%),
+      linear-gradient(rgba(103, 232, 249, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(103, 232, 249, 0.05) 1px, transparent 1px);
+    background-size: auto, auto, 42px 42px, 42px 42px;
+    background-position: 0 0, 0 0, -1px -1px, -1px -1px;
+  }
+  .circuit-field::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0) 0px,
+      rgba(0, 0, 0, 0) 2px,
+      rgba(0, 0, 0, 0.12) 3px
+    );
+    mix-blend-mode: overlay;
+    opacity: 0.5;
+  }
+
+  .scanline-sweep {
+    position: relative;
+    overflow: hidden;
+  }
+  .scanline-sweep::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 45%;
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(34, 211, 238, 0.06) 45%,
+      rgba(34, 211, 238, 0.14) 50%,
+      rgba(34, 211, 238, 0.06) 55%,
+      transparent 100%
+    );
+    animation: scan 5s linear infinite;
+    pointer-events: none;
+  }
+
+  .hud-corner {
+    position: relative;
+  }
+  .hud-corner::before,
+  .hud-corner::after {
+    content: "";
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-color: rgba(34, 211, 238, 0.6);
+    pointer-events: none;
+  }
+  .hud-corner::before {
+    top: -1px;
+    left: -1px;
+    border-top: 2px solid;
+    border-left: 2px solid;
+  }
+  .hud-corner::after {
+    bottom: -1px;
+    right: -1px;
+    border-bottom: 2px solid;
+    border-right: 2px solid;
+  }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes spin-reverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+@keyframes scan {
+  0% { transform: translateY(-120%); }
+  100% { transform: translateY(220%); }
+}
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  8% { opacity: 0.85; }
+  10% { opacity: 1; }
+  92% { opacity: 1; }
+  94% { opacity: 0.7; }
+  96% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+[data-reduced-motion="true"] *,
+[data-reduced-motion="true"] *::before,
+[data-reduced-motion="true"] *::after {
+  animation-duration: 0.001ms !important;
+  transition-duration: 0.001ms !important;
+}
