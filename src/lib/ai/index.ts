@@ -21,6 +21,51 @@ function pickModel(envPrefix: string, intent: IntentCategory, generalEnvVar: str
   return process.env[`${envPrefix}_MODEL_${intent}`] || generalEnvVar || fallback;
 }
 
+export interface ResolvedProviderConfig {
+  providerId: "openrouter" | "groq" | "openai-compatible";
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
+/**
+ * Resolves which OpenAI-compatible backend to use from server-only
+ * environment variables, in priority order — the same three providers
+ * resolveAIStream below already supports for plain streaming. Extracted
+ * so the reasoning engine's function-calling route (which needs the same
+ * provider/model, not just a stream) can reuse this instead of
+ * duplicating the priority-order logic. Returns null when none of the
+ * three are configured (n8n-only or demo-mode deployments) — callers
+ * fall back to their own non-function-calling path in that case.
+ */
+export function resolveProviderConfig(intent: IntentCategory): ResolvedProviderConfig | null {
+  if (process.env.OPENROUTER_API_KEY) {
+    return {
+      providerId: "openrouter",
+      baseUrl: "https://openrouter.ai/api/v1",
+      apiKey: process.env.OPENROUTER_API_KEY,
+      model: pickModel("OPENROUTER", intent, process.env.OPENROUTER_MODEL, DEFAULT_MODELS.openrouter!),
+    };
+  }
+  if (process.env.GROQ_API_KEY) {
+    return {
+      providerId: "groq",
+      baseUrl: "https://api.groq.com/openai/v1",
+      apiKey: process.env.GROQ_API_KEY,
+      model: pickModel("GROQ", intent, process.env.GROQ_MODEL, DEFAULT_MODELS.groq!),
+    };
+  }
+  if (process.env.OPENAI_COMPATIBLE_API_KEY && process.env.OPENAI_COMPATIBLE_BASE_URL) {
+    return {
+      providerId: "openai-compatible",
+      baseUrl: process.env.OPENAI_COMPATIBLE_BASE_URL,
+      apiKey: process.env.OPENAI_COMPATIBLE_API_KEY,
+      model: pickModel("OPENAI_COMPATIBLE", intent, process.env.OPENAI_COMPATIBLE_MODEL, DEFAULT_MODELS["openai-compatible"]!),
+    };
+  }
+  return null;
+}
+
 /**
  * Resolves which AI backend to use from server-only environment variables,
  * in priority order, and returns a unified async-generator stream
@@ -40,50 +85,11 @@ export function resolveAIStream(
   ];
   const intent = classifyIntent(userText);
 
-  if (process.env.OPENROUTER_API_KEY) {
+  const provider = resolveProviderConfig(intent);
+  if (provider) {
     return {
-      providerId: "openrouter",
-      stream: streamOpenAICompatible(
-        {
-          baseUrl: "https://openrouter.ai/api/v1",
-          apiKey: process.env.OPENROUTER_API_KEY,
-          model: pickModel("OPENROUTER", intent, process.env.OPENROUTER_MODEL, DEFAULT_MODELS.openrouter!),
-        },
-        messages
-      ),
-    };
-  }
-
-  if (process.env.GROQ_API_KEY) {
-    return {
-      providerId: "groq",
-      stream: streamOpenAICompatible(
-        {
-          baseUrl: "https://api.groq.com/openai/v1",
-          apiKey: process.env.GROQ_API_KEY,
-          model: pickModel("GROQ", intent, process.env.GROQ_MODEL, DEFAULT_MODELS.groq!),
-        },
-        messages
-      ),
-    };
-  }
-
-  if (process.env.OPENAI_COMPATIBLE_API_KEY && process.env.OPENAI_COMPATIBLE_BASE_URL) {
-    return {
-      providerId: "openai-compatible",
-      stream: streamOpenAICompatible(
-        {
-          baseUrl: process.env.OPENAI_COMPATIBLE_BASE_URL,
-          apiKey: process.env.OPENAI_COMPATIBLE_API_KEY,
-          model: pickModel(
-            "OPENAI_COMPATIBLE",
-            intent,
-            process.env.OPENAI_COMPATIBLE_MODEL,
-            DEFAULT_MODELS["openai-compatible"]!
-          ),
-        },
-        messages
-      ),
+      providerId: provider.providerId,
+      stream: streamOpenAICompatible({ baseUrl: provider.baseUrl, apiKey: provider.apiKey, model: provider.model }, messages),
     };
   }
 
