@@ -38,6 +38,9 @@ export const vectorMemoryProvider: MemoryProvider = {
   async optimizeMemory() {
     throw new Error(NOT_IMPLEMENTED);
   },
+  async clearAll() {
+    throw new Error(NOT_IMPLEMENTED);
+  },
   async getStats() {
     const byType = Object.fromEntries(MEMORY_TYPES.map((t) => [t, 0])) as Record<MemoryType, number>;
     const stats: MemoryStats = { total: 0, byType };

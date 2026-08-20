@@ -71,6 +71,15 @@ describe("localMemoryProvider", () => {
     expect(stats.total).toBe(1);
   });
 
+  it("clearAll deletes every record and reports how many were removed", async () => {
+    await localMemoryProvider.storeMemory({ type: "FACT", content: "a", importance: 0.1, source: "user" });
+    await localMemoryProvider.storeMemory({ type: "TASK", content: "b", importance: 0.1, source: "user" });
+    const { removed } = await localMemoryProvider.clearAll();
+    expect(removed).toBe(2);
+    const stats = await localMemoryProvider.getStats();
+    expect(stats.total).toBe(0);
+  });
+
   it("getStats buckets counts by type", async () => {
     await localMemoryProvider.storeMemory({ type: "FACT", content: "a", importance: 0.1, source: "user" });
     await localMemoryProvider.storeMemory({ type: "FACT", content: "b", importance: 0.1, source: "user" });

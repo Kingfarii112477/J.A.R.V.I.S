@@ -35,6 +35,12 @@ describe("routeToTool", () => {
     expect(match?.args.query).toBe("my preferences");
   });
 
+  it("routes the CLI-style 'memory search <query>' phrasing to the memory_search tool", () => {
+    const match = routeToTool("memory search deployment schedule");
+    expect(match?.toolName).toBe("memory_search");
+    expect(match?.args.query).toBe("deployment schedule");
+  });
+
   it("returns null for ordinary conversation that matches no tool pattern", () => {
     expect(routeToTool("tell me a story about robots")).toBeNull();
     expect(routeToTool("how are you today")).toBeNull();

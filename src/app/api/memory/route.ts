@@ -46,6 +46,7 @@ const requestSchema = z.discriminatedUnion("action", [
     id: z.string().min(1),
   }),
   z.object({ action: z.literal("optimize"), provider: providerIdEnum }),
+  z.object({ action: z.literal("clearAll"), provider: providerIdEnum }),
   z.object({ action: z.literal("stats"), provider: providerIdEnum }),
 ]);
 
@@ -117,6 +118,10 @@ export async function POST(request: Request) {
       }
       case "optimize": {
         const result = await provider.optimizeMemory();
+        return NextResponse.json(result);
+      }
+      case "clearAll": {
+        const result = await provider.clearAll();
         return NextResponse.json(result);
       }
       case "stats": {

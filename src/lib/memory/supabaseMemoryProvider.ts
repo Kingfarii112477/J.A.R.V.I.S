@@ -147,6 +147,15 @@ export const supabaseMemoryProvider: MemoryProvider = {
     return { removed: 0 };
   },
 
+  async clearAll() {
+    // Count first so we can report an honest removed count — PostgREST's
+    // DELETE response doesn't include one without a return=representation
+    // body that could be arbitrarily large for a full-table clear.
+    const before = await this.getStats();
+    await restFetch(`${TABLE}?id=neq.__jarvis_never_matches__`, { method: "DELETE" });
+    return { removed: before.total };
+  },
+
   async getStats() {
     const byType = Object.fromEntries(MEMORY_TYPES.map((t) => [t, 0])) as Record<MemoryType, number>;
     let total = 0;

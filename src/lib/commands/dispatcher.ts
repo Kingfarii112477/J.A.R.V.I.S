@@ -2,6 +2,7 @@ import { useJarvisStore } from "@/store/jarvisStore";
 import { runFullDiagnostics, isDiagnosticsRunning } from "@/lib/diagnostics/run";
 import { getMemorySummary } from "@/lib/memory/local";
 import { navItems } from "@/config/navigation";
+import { toolRegistry } from "@/lib/tools";
 
 export interface DispatchContext {
   navigate?: (href: string) => void;
@@ -31,14 +32,19 @@ const SCREEN_ALIASES: Record<string, string> = {
 };
 
 export const AVAILABLE_COMMANDS = [
+  "status",
   "system status",
   "run diagnostics",
+  "protocols",
   "activate protocols",
   "scan network",
   "open research mode",
   "initialize neural core",
   "security check",
   "memory status",
+  "memory search <query>",
+  "memory clear",
+  "tools",
   "clear terminal",
   "deploy agents",
   "create task <title>",
@@ -81,7 +87,7 @@ export function dispatchCommand(rawInput: string, ctx: DispatchContext = {}): Di
     return { handled: true, response: "Terminal cleared." };
   }
 
-  if (lower === "system status") {
+  if (lower === "status" || lower === "system status") {
     const online = store.subsystems.filter((s) => s.state === "ONLINE").length;
     const lines = store.subsystems.map((s) => `  ${s.label.padEnd(16)} ${s.state}`).join("\n");
     return {
@@ -103,6 +109,19 @@ export function dispatchCommand(rawInput: string, ctx: DispatchContext = {}): Di
     const active = store.protocols.filter((p) => p.status === "ACTIVE").length;
     store.pushTerminalLine({ kind: "system", text: `Protocol matrix reaffirmed — ${active}/${store.protocols.length} active.` });
     return { handled: true, response: `Protocol matrix reaffirmed. ${active} of ${store.protocols.length} protocols active.` };
+  }
+
+  if (lower === "protocols" || lower === "list protocols") {
+    if (store.protocols.length === 0) return { handled: true, response: "No protocols registered." };
+    const lines = store.protocols.map((p) => `  [${p.status}] ${p.label}`).join("\n");
+    return { handled: true, response: `Protocol matrix:\n${lines}` };
+  }
+
+  if (lower === "tools" || lower === "list tools") {
+    const tools = toolRegistry.list();
+    if (tools.length === 0) return { handled: true, response: "No tools registered." };
+    const lines = tools.map((t) => `  [${t.permission}] ${t.name} — ${t.description}`).join("\n");
+    return { handled: true, response: `Registered tools:\n${lines}` };
   }
 
   if (lower === "scan network") {

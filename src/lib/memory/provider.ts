@@ -20,5 +20,9 @@ export interface MemoryProvider {
   updateMemory(id: string, patch: Partial<MemoryInput>): Promise<MemoryRecord | null>;
   deleteMemory(id: string): Promise<boolean>;
   optimizeMemory(): Promise<{ removed: number }>;
+  /** Deletes every stored record for this provider. Destructive and
+   * irreversible — callers (the `memory clear` terminal command) must get
+   * an explicit second confirmation from the user before calling this. */
+  clearAll(): Promise<{ removed: number }>;
   getStats(): Promise<MemoryStats>;
 }

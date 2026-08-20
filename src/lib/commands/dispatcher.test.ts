@@ -77,4 +77,23 @@ describe("dispatchCommand", () => {
     expect(result.handled).toBe(true);
     expect(result.response).toMatch(/GB used/);
   });
+
+  it("'status' is an alias for 'system status'", () => {
+    const result = dispatchCommand("status");
+    expect(result.handled).toBe(true);
+    expect(result.response).toMatch(/subsystems online/);
+  });
+
+  it("lists the protocol matrix on 'protocols'", () => {
+    const result = dispatchCommand("protocols");
+    expect(result.handled).toBe(true);
+    expect(result.response).toMatch(/Protocol matrix/);
+  });
+
+  it("lists registered tools with their permission level on 'tools'", () => {
+    const result = dispatchCommand("tools");
+    expect(result.handled).toBe(true);
+    expect(result.response).toContain("calculator");
+    expect(result.response).toMatch(/\[SAFE\]|\[CONFIRM\]|\[RESTRICTED\]|\[ADMIN\]/);
+  });
 });

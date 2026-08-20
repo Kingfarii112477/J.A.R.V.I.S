@@ -91,6 +91,18 @@ export const memoryClient = {
     return result;
   },
 
+  /** Deletes every stored record. Destructive and irreversible — only ever
+   * called after the caller (the `memory clear` terminal command) has
+   * gotten an explicit second confirmation from the user. */
+  async clearAll(): Promise<{ removed: number }> {
+    const providerId = activeProviderId();
+    const result =
+      providerId === "local" ? await localMemoryProvider.clearAll() : await callRemote<{ removed: number }>("clearAll", {});
+    eventBus.emit("memory.updated", { count: result.removed, action: "delete" });
+    logAuditEvent({ type: "MEMORY_DELETE", source: "app", result: "success", detail: `clear-all:${result.removed}` });
+    return result;
+  },
+
   async stats(): Promise<MemoryStats> {
     const providerId = activeProviderId();
     if (providerId === "local") return localMemoryProvider.getStats();

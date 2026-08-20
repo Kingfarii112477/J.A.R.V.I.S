@@ -150,6 +150,12 @@ export const localMemoryProvider: MemoryProvider = {
     return { removed };
   },
 
+  async clearAll() {
+    const all = loadAll();
+    saveAll([]);
+    return { removed: all.length };
+  },
+
   async getStats() {
     const all = loadAll();
     const byType = Object.fromEntries(MEMORY_TYPES.map((t) => [t, 0])) as Record<MemoryType, number>;

@@ -7,6 +7,11 @@ import { HudPanel } from "@/components/hud/HudPanel";
 import { TypewriterLine } from "./TypewriterLine";
 import { useJarvisStore } from "@/store/jarvisStore";
 import { dispatchCommand, AVAILABLE_COMMANDS } from "@/lib/commands/dispatcher";
+import { computeTabComplete, completionText, type TabCompleteState } from "@/lib/commands/autocomplete";
+import { routeToTool } from "@/lib/tools/router";
+import { executeTool } from "@/lib/tools";
+import { memoryClient } from "@/lib/memory/client";
+import { getSessionId } from "@/lib/utils/id";
 import { cn } from "@/lib/utils/cn";
 
 const SUGGESTIONS = ["system status", "run diagnostics", "security check", "memory status", "help"];
@@ -28,6 +33,8 @@ export function DiagnosticTerminal() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const latestOutputId = useRef<string | null>(null);
   const welcomedRef = useRef(false);
+  const sessionIdRef = useRef(getSessionId());
+  const tabStateRef = useRef<TabCompleteState | null>(null);
 
   useEffect(() => {
     if (welcomedRef.current) return;
@@ -42,32 +49,95 @@ export function DiagnosticTerminal() {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [lines]);
 
+  function printLines(text: string, kind: "output" | "system") {
+    for (const [i, line] of text.split("\n").entries()) {
+      const id = `${Date.now()}-${i}`;
+      if (i === 0) latestOutputId.current = id;
+      pushTerminalLine({ kind, text: line });
+    }
+  }
+
   async function submit(raw: string) {
     const text = raw.trim();
     if (!text || busy) return;
     setInput("");
     setHistory((prev) => [...prev, text]);
     setHistoryIndex(null);
+    tabStateRef.current = null;
     pushTerminalLine({ kind: "input", text });
 
     setBusy(true);
     await delay(280 + Math.random() * 260);
 
-    const result = dispatchCommand(text, { navigate: (href) => router.push(href), source: "terminal" });
-    const responseText = result.handled
-      ? result.response
-      : `Unrecognized command: "${text}". Type 'help' for available commands.`;
+    const lower = text.toLowerCase();
 
-    for (const [i, line] of responseText.split("\n").entries()) {
-      const id = `${Date.now()}-${i}`;
-      if (i === 0) latestOutputId.current = id;
-      pushTerminalLine({ kind: result.handled ? "output" : "system", text: line });
-      if (i === 0) await delay(60);
+    // Destructive — deletes every stored memory record. Never a single
+    // command wipes it all; requires a second, explicit confirmation.
+    if (lower === "memory clear") {
+      printLines('This permanently deletes every stored memory record. Type "memory clear confirm" to proceed.', "system");
+      setBusy(false);
+      return;
     }
+    if (lower === "memory clear confirm") {
+      try {
+        const result = await memoryClient.clearAll();
+        printLines(`Cleared ${result.removed} memory record(s).`, "output");
+      } catch (err) {
+        printLines(`Memory clear failed: ${err instanceof Error ? err.message : "Unknown error"}`, "system");
+      }
+      setBusy(false);
+      return;
+    }
+
+    const result = dispatchCommand(text, { navigate: (href) => router.push(href), source: "terminal" });
+    if (result.handled) {
+      printLines(result.response, "output");
+      await delay(60);
+      setBusy(false);
+      return;
+    }
+
+    // Not a system command — try the same deterministic tool router chat
+    // and voice use (calculator, time, weather, web/memory search) before
+    // giving up. Same integrity model as dispatchCommand: no LLM decides
+    // what runs here.
+    const toolMatch = routeToTool(text);
+    if (toolMatch) {
+      const execResult = await executeTool(toolMatch.toolName, toolMatch.args, {
+        sessionId: sessionIdRef.current,
+        source: "terminal",
+        navigate: (href) => router.push(href),
+      });
+      if (execResult.needsConfirmation) {
+        printLines(`"${toolMatch.toolName}" requires confirmation — run it from Chat or Voice to confirm.`, "system");
+      } else if (execResult.ok) {
+        printLines(execResult.summary ?? "Done.", "output");
+      } else {
+        printLines(execResult.error ?? "Tool execution failed.", "system");
+      }
+      await delay(60);
+      setBusy(false);
+      return;
+    }
+
+    printLines(`Unrecognized command: "${text}". Type 'help' for available commands.`, "system");
     setBusy(false);
   }
 
+  function handleTabComplete() {
+    const next = computeTabComplete(input, AVAILABLE_COMMANDS, tabStateRef.current);
+    if (!next) return;
+    tabStateRef.current = next;
+    setInput(completionText(next));
+  }
+
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      handleTabComplete();
+      return;
+    }
+    tabStateRef.current = null;
     if (e.key === "Enter") {
       submit(input);
     } else if (e.key === "ArrowUp") {

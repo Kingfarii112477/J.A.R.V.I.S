@@ -37,7 +37,9 @@ export function routeToTool(text: string): ToolRouteMatch | null {
     return { toolName: "web_search", args: { query: searchMatch[1].trim() } };
   }
 
-  const memorySearchMatch = trimmed.match(/^(?:what do you remember about|search (?:my )?memory for|recall)\s+(.+)$/i);
+  const memorySearchMatch = trimmed.match(
+    /^(?:what do you remember about|search (?:my )?memory for|recall|memory search)\s+(.+)$/i
+  );
   if (memorySearchMatch) {
     return { toolName: "memory_search", args: { query: memorySearchMatch[1].trim() } };
   }
