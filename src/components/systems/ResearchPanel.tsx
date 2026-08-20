@@ -6,6 +6,7 @@ import { HudPanel } from "@/components/hud/HudPanel";
 import { DataSourceBadge } from "@/components/common/DataSourceBadge";
 import { searchWeb, getResearchStatus, type ResearchStatus } from "@/lib/research/client";
 import type { ResearchResult } from "@/lib/research/provider";
+import { isSafeExternalUrl } from "@/lib/utils/url";
 
 type QueryState = "idle" | "loading" | "done" | "error";
 
@@ -106,21 +107,30 @@ export function ResearchPanel() {
 
         {queryState === "done" && results.length > 0 && (
           <ul className="flex flex-col gap-2.5">
-            {results.map((r, i) => (
-              <li key={`${r.url}-${i}`} className="rounded-lg bg-panel-strong px-3 py-2.5">
-                <a
-                  href={r.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-sm font-medium text-cyan hover:underline"
-                >
-                  {r.title}
-                  <ExternalLink size={11} className="shrink-0" />
-                </a>
-                <p className="mt-1 truncate font-technical text-[10px] text-text-muted">{r.url}</p>
-                <p className="mt-1.5 text-xs leading-relaxed text-text-secondary">{r.snippet}</p>
-              </li>
-            ))}
+            {results.map((r, i) => {
+              const safe = isSafeExternalUrl(r.url);
+              return (
+                <li key={`${r.url}-${i}`} className="rounded-lg bg-panel-strong px-3 py-2.5">
+                  {safe ? (
+                    <a
+                      href={r.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-sm font-medium text-cyan hover:underline"
+                    >
+                      {r.title}
+                      <ExternalLink size={11} className="shrink-0" />
+                    </a>
+                  ) : (
+                    <p className="text-sm font-medium text-text-primary">{r.title}</p>
+                  )}
+                  <p className="mt-1 truncate font-technical text-[10px] text-text-muted">
+                    {safe ? r.url : "Link withheld — not a valid http(s) URL."}
+                  </p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-text-secondary">{r.snippet}</p>
+                </li>
+              );
+            })}
           </ul>
         )}
       </HudPanel>
