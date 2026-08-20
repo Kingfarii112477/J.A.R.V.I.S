@@ -21,6 +21,7 @@ export function JarvisShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const locked = useJarvisStore((s) => s.locked);
   const reducedMotion = useJarvisStore((s) => s.settings.reducedMotion);
+  const debugMode = useJarvisStore((s) => s.settings.debugMode);
 
   useNotificationBridge();
   useProactiveEngine();
@@ -50,7 +51,7 @@ export function JarvisShell({ children }: { children: ReactNode }) {
         </div>
         <BottomNav />
         <ToastStack />
-        <PerfMonitor />
+        {debugMode && <PerfMonitor />}
         {locked && <LockScreen />}
       </div>
     </MotionConfig>

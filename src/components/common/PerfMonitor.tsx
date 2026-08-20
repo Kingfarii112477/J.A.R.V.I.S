@@ -1,19 +1,17 @@
 "use client";
 
 import { Activity } from "lucide-react";
-import { useJarvisStore } from "@/store/jarvisStore";
 import { usePerfStats } from "@/hooks/usePerfStats";
 import { useTelemetry } from "@/hooks/useTelemetry";
 import { cn } from "@/lib/utils/cn";
 
-/** Developer-only overlay — only rendered when settings.debugMode is on.
- * Never shown to normal users; see Settings → Advanced. */
+/** Developer-only overlay. JarvisShell only mounts this when
+ * settings.debugMode is on, so the sampling hooks below (a continuous
+ * requestAnimationFrame loop, event listeners) never run for normal
+ * users — not just the rendered output, the cost itself is skipped. */
 export function PerfMonitor() {
-  const debugMode = useJarvisStore((s) => s.settings.debugMode);
   const stats = usePerfStats();
   const telemetry = useTelemetry();
-
-  if (!debugMode) return null;
 
   const fpsColor = stats.fps >= 50 ? "text-success" : stats.fps >= 30 ? "text-warning" : "text-danger";
 
