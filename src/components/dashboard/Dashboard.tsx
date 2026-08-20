@@ -12,6 +12,7 @@ import { useJarvisStore } from "@/store/jarvisStore";
 import { useJarvisState, stateLabel, stateDescription } from "@/hooks/useJarvisState";
 import { useSound } from "@/hooks/useSound";
 import { cn } from "@/lib/utils/cn";
+import { TaskPanel } from "./TaskPanel";
 
 const quickActions = [
   { id: "chat", label: "Chat", href: "/chat", icon: MessageSquare },
@@ -158,6 +159,8 @@ export function Dashboard() {
           );
         })}
       </div>
+
+      <TaskPanel />
     </div>
   );
 }

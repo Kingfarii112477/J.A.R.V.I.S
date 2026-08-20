@@ -11,11 +11,21 @@ import { ScreenErrorFallback } from "@/components/layout/ScreenErrorFallback";
 import { ToastStack } from "@/components/common/Toast";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { useJarvisStore } from "@/store/jarvisStore";
+import { useNotificationBridge } from "@/hooks/useNotificationBridge";
+import { useProactiveEngine } from "@/hooks/useProactiveEngine";
+import { useSessionIdleTimer } from "@/hooks/useSessionIdleTimer";
+import { useAuditBridge } from "@/hooks/useAuditBridge";
+import { PerfMonitor } from "@/components/common/PerfMonitor";
 
 export function JarvisShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const locked = useJarvisStore((s) => s.locked);
   const reducedMotion = useJarvisStore((s) => s.settings.reducedMotion);
+
+  useNotificationBridge();
+  useProactiveEngine();
+  useSessionIdleTimer();
+  useAuditBridge();
 
   return (
     <MotionConfig reducedMotion={reducedMotion ? "always" : "user"}>
@@ -40,6 +50,7 @@ export function JarvisShell({ children }: { children: ReactNode }) {
         </div>
         <BottomNav />
         <ToastStack />
+        <PerfMonitor />
         {locked && <LockScreen />}
       </div>
     </MotionConfig>

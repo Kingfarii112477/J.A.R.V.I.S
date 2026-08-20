@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveAIStream } from "@/lib/ai";
+import { classifyIntent } from "@/lib/ai/router";
+import { assembleContext } from "@/lib/context/contextEngine";
+import { JARVIS_SYSTEM_PROMPT } from "@/config/ai";
 
 export const runtime = "nodejs";
 
@@ -17,6 +20,19 @@ const requestSchema = z.object({
     .max(30)
     .optional()
     .default([]),
+  // Context-engine inputs (all optional — chat still works without them,
+  // e.g. from older clients or the demo path).
+  screen: z.string().max(60).optional().default("chat"),
+  jarvisState: z.string().max(30).optional().default("THINKING"),
+  addressUser: z.string().max(60).optional(),
+  verbosity: z.enum(["concise", "balanced", "detailed"]).optional().default("balanced"),
+  retrievedMemories: z
+    .array(z.object({ content: z.string().max(1000), type: z.string().max(40) }))
+    .max(8)
+    .optional()
+    .default([]),
+  activeTaskTitle: z.string().max(200).optional(),
+  toolResult: z.object({ toolName: z.string().max(60), summary: z.string().max(1000) }).optional(),
 });
 
 export async function POST(request: Request) {
@@ -32,11 +48,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request.", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { message, sessionId, history } = parsed.data;
+  const { message, sessionId, history, screen, jarvisState, addressUser, verbosity, retrievedMemories, activeTaskTitle, toolResult } =
+    parsed.data;
+
+  const assembled = assembleContext({
+    systemPrompt: JARVIS_SYSTEM_PROMPT,
+    screen,
+    jarvisState,
+    aiName: "J.A.R.V.I.S.",
+    addressUser,
+    verbosity,
+    retrievedMemories,
+    activeTaskTitle,
+    toolResult,
+    history,
+  });
+  const systemPrompt = assembled[0].content;
+  const trimmedHistory = assembled.slice(1);
 
   let result;
   try {
-    result = resolveAIStream(message, history, sessionId);
+    result = resolveAIStream(message, trimmedHistory, sessionId, systemPrompt);
   } catch (err) {
     return NextResponse.json(
       { error: "AI core connection lost.", detail: err instanceof Error ? err.message : "Unknown error" },
@@ -67,6 +99,7 @@ export async function POST(request: Request) {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "X-AI-Provider": result.providerId,
+      "X-AI-Intent": classifyIntent(message),
       "Cache-Control": "no-store",
     },
   });

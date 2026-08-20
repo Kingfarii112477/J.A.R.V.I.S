@@ -17,9 +17,12 @@ import { Modal } from "@/components/common/Modal";
 import { SettingRow } from "./SettingRow";
 import { ToggleSwitch } from "./ToggleSwitch";
 import { SliderControl } from "./SliderControl";
+import { SecurityCenter } from "./SecurityCenter";
 import { useJarvisStore, defaultSettings } from "@/store/jarvisStore";
 import { useJarvisState } from "@/hooks/useJarvisState";
 import { cn } from "@/lib/utils/cn";
+import { logAuditEvent } from "@/lib/security/auditLog";
+import { eventBus } from "@/lib/events/bus";
 import type { JarvisSettings } from "@/types/jarvis";
 
 const TABS = [
@@ -72,6 +75,8 @@ export function SettingsPanel() {
 
   function set<K extends keyof JarvisSettings>(key: K, value: JarvisSettings[K]) {
     updateSettings({ [key]: value } as Partial<JarvisSettings>);
+    logAuditEvent({ type: "SETTINGS_CHANGE", source: "settings", result: "success", detail: key });
+    eventBus.emit("settings.changed", { keys: [key] });
   }
 
   function handleReset() {
@@ -246,6 +251,13 @@ export function SettingsPanel() {
               <SettingRow label="Quantum Encryption" description="Simulated protocol — always on for this build">
                 <ToggleSwitch checked={secured} onChange={setSecured} label="Quantum Encryption" />
               </SettingRow>
+              <SettingRow label="Strict Tool Confirmation" description="Require confirmation for every tool, even SAFE ones">
+                <ToggleSwitch checked={settings.strictToolConfirmation} onChange={(v) => set("strictToolConfirmation", v)} label="Strict Tool Confirmation" />
+              </SettingRow>
+              <SettingRow label="Audit Logging" description="Record AI/tool/memory/settings events locally">
+                <ToggleSwitch checked={settings.auditLoggingEnabled} onChange={(v) => set("auditLoggingEnabled", v)} label="Audit Logging" />
+              </SettingRow>
+              <SecurityCenter />
             </div>
           )}
 

@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo, useState, useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
-import { EffectComposer, Bloom } from "@react-three/postprocessing";
+import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
 import type { JarvisState } from "@/types/jarvis";
 import { coreStateColor, qualityPresets, type GraphicsQuality } from "@/config/theme";
 import { useJarvisStore } from "@/store/jarvisStore";
@@ -100,11 +100,13 @@ export function JarvisCore({
             {preset.bloom && (
               <EffectComposer multisampling={0}>
                 <Bloom
-                  intensity={0.9}
-                  luminanceThreshold={0.15}
-                  luminanceSmoothing={0.4}
+                  intensity={0.7}
+                  luminanceThreshold={0.2}
+                  luminanceSmoothing={0.5}
+                  levels={8}
                   mipmapBlur
                 />
+                <Vignette eskil={false} offset={0.25} darkness={0.55} />
               </EffectComposer>
             )}
           </Suspense>

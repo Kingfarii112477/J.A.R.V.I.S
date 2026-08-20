@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ShieldAlert } from "lucide-react";
 import { JarvisCore } from "@/components/3d/JarvisCore";
 import { useJarvisStore } from "@/store/jarvisStore";
+import { logAuditEvent } from "@/lib/security/auditLog";
 
 const DEMO_PASSPHRASE = "jarvis";
 
@@ -15,6 +16,8 @@ const DEMO_PASSPHRASE = "jarvis";
  */
 export function LockScreen() {
   const setLocked = useJarvisStore((s) => s.setLocked);
+  const incrementFailedUnlockAttempts = useJarvisStore((s) => s.incrementFailedUnlockAttempts);
+  const resetFailedUnlockAttempts = useJarvisStore((s) => s.resetFailedUnlockAttempts);
   const [value, setValue] = useState("");
   const [error, setError] = useState(false);
 
@@ -24,8 +27,12 @@ export function LockScreen() {
       setLocked(false);
       setError(false);
       setValue("");
+      resetFailedUnlockAttempts();
+      logAuditEvent({ type: "AUTHENTICATION", source: "lock-screen", result: "success", detail: "unlock" });
     } else {
       setError(true);
+      incrementFailedUnlockAttempts();
+      logAuditEvent({ type: "AUTHENTICATION", source: "lock-screen", result: "denied", detail: "unlock" });
     }
   }
 

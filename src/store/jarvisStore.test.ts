@@ -44,6 +44,48 @@ describe("jarvisStore terminal", () => {
   });
 });
 
+describe("jarvisStore tasks", () => {
+  beforeEach(() => {
+    useJarvisStore.setState({ tasks: [] });
+  });
+
+  it("addTask creates a PENDING task with timestamps", () => {
+    const task = useJarvisStore.getState().addTask({ title: "Draft report" });
+    expect(task.status).toBe("PENDING");
+    expect(task.priority).toBe("medium");
+    expect(useJarvisStore.getState().tasks).toHaveLength(1);
+  });
+
+  it("updateTaskStatus transitions status and bumps updatedAt", async () => {
+    const task = useJarvisStore.getState().addTask({ title: "Draft report" });
+    await new Promise((r) => setTimeout(r, 5));
+    const updated = useJarvisStore.getState().updateTaskStatus(task.id, "COMPLETED");
+    expect(updated?.status).toBe("COMPLETED");
+    expect(updated!.updatedAt).toBeGreaterThan(task.updatedAt);
+  });
+
+  it("updateTaskStatus returns null for an unknown id", () => {
+    expect(useJarvisStore.getState().updateTaskStatus("nope", "COMPLETED")).toBeNull();
+  });
+
+  it("removeTask deletes the task", () => {
+    const task = useJarvisStore.getState().addTask({ title: "Temp" });
+    useJarvisStore.getState().removeTask(task.id);
+    expect(useJarvisStore.getState().tasks).toHaveLength(0);
+  });
+});
+
+describe("jarvisStore failed unlock attempts", () => {
+  it("increments and resets independently of other state", () => {
+    useJarvisStore.setState({ failedUnlockAttempts: 0 });
+    useJarvisStore.getState().incrementFailedUnlockAttempts();
+    useJarvisStore.getState().incrementFailedUnlockAttempts();
+    expect(useJarvisStore.getState().failedUnlockAttempts).toBe(2);
+    useJarvisStore.getState().resetFailedUnlockAttempts();
+    expect(useJarvisStore.getState().failedUnlockAttempts).toBe(0);
+  });
+});
+
 describe("jarvisStore toasts", () => {
   it("pushToast adds and dismissToast removes by id", () => {
     useJarvisStore.getState().pushToast("Optimization complete.", "success");

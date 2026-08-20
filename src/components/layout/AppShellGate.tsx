@@ -5,6 +5,7 @@ import { BootSequence } from "@/components/hud/BootSequence";
 import { JarvisShell } from "@/components/layout/JarvisShell";
 import { useJarvisStore } from "@/store/jarvisStore";
 import { useTelemetryEngine } from "@/hooks/useTelemetry";
+import { eventBus } from "@/lib/events/bus";
 
 export function AppShellGate({ children }: { children: ReactNode }) {
   const booted = useJarvisStore((s) => s.booted);
@@ -19,6 +20,7 @@ export function AppShellGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setHydrated(true);
+    eventBus.emit("jarvis.boot", {});
   }, []);
 
   useEffect(() => {
@@ -32,6 +34,7 @@ export function AppShellGate({ children }: { children: ReactNode }) {
     if (hydrated && skipBootAnimation && !booted) {
       setState("IDLE");
       setBooted(true);
+      eventBus.emit("jarvis.ready", {});
     }
   }, [hydrated, skipBootAnimation, booted, setBooted, setState]);
 
@@ -49,6 +52,7 @@ export function AppShellGate({ children }: { children: ReactNode }) {
         onComplete={() => {
           setState("IDLE");
           setBooted(true);
+          eventBus.emit("jarvis.ready", {});
         }}
       />
     );

@@ -28,7 +28,7 @@ export function ChatWindow() {
   const clearMessages = useJarvisStore((s) => s.clearMessages);
   const aiConnection = useJarvisStore((s) => s.aiConnection);
 
-  const { sendMessage, runAIPath, generating, stop } = useMessagePipeline();
+  const { sendMessage, runAIPath, confirmTool, cancelTool, generating, stop } = useMessagePipeline();
   const playSound = useSound();
 
   const [input, setInput] = useState("");
@@ -97,7 +97,13 @@ export function ChatWindow() {
       <HudPanel className="scanline-sweep flex-1 overflow-y-auto">
         <div className="flex flex-col gap-4 p-1">
           {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} onRetry={() => handleRetry(m.id)} />
+            <MessageBubble
+              key={m.id}
+              message={m}
+              onRetry={() => handleRetry(m.id)}
+              onConfirmTool={() => confirmTool(m.id)}
+              onCancelTool={() => cancelTool(m.id)}
+            />
           ))}
           <div ref={bottomRef} />
         </div>

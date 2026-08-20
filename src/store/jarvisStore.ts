@@ -10,6 +10,7 @@ import type {
   TelemetrySnapshot,
   TerminalLine,
 } from "@/types/jarvis";
+import type { JarvisTask, TaskStatus } from "@/types/tasks";
 
 export const defaultSettings: JarvisSettings = {
   aiName: "J.A.R.V.I.S.",
@@ -42,6 +43,12 @@ export const defaultSettings: JarvisSettings = {
   reducedMotion: false,
   skipBootAnimation: false,
   debugMode: false,
+
+  memoryProvider: "local",
+  sttProvider: "browser",
+  ttsProvider: "browser",
+  strictToolConfirmation: false,
+  auditLoggingEnabled: true,
 };
 
 export const defaultSubsystems: Subsystem[] = [
@@ -87,6 +94,10 @@ interface JarvisStore {
   setSecured: (v: boolean) => void;
   locked: boolean;
   setLocked: (v: boolean) => void;
+  sessionStartedAt: number;
+  failedUnlockAttempts: number;
+  incrementFailedUnlockAttempts: () => void;
+  resetFailedUnlockAttempts: () => void;
 
   booted: boolean;
   setBooted: (v: boolean) => void;
@@ -129,9 +140,14 @@ interface JarvisStore {
   aiConnection: "unknown" | "connected" | "demo" | "error";
   setAiConnection: (v: "unknown" | "connected" | "demo" | "error") => void;
 
-  toasts: { id: string; message: string; variant: "info" | "success" | "warning" | "error" }[];
-  pushToast: (message: string, variant?: "info" | "success" | "warning" | "error") => void;
+  toasts: { id: string; message: string; variant: "info" | "success" | "warning" | "error" | "system"; title?: string }[];
+  pushToast: (message: string, variant?: "info" | "success" | "warning" | "error" | "system", title?: string) => void;
   dismissToast: (id: string) => void;
+
+  tasks: JarvisTask[];
+  addTask: (input: { title: string; description?: string; priority?: JarvisTask["priority"]; dueAt?: number }) => JarvisTask;
+  updateTaskStatus: (id: string, status: TaskStatus) => JarvisTask | null;
+  removeTask: (id: string) => void;
 }
 
 let idCounter = 0;
@@ -142,7 +158,7 @@ function nextId(prefix: string) {
 
 export const useJarvisStore = create<JarvisStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       state: "BOOTING",
       previousState: "BOOTING",
       setState: (s) =>
@@ -152,6 +168,10 @@ export const useJarvisStore = create<JarvisStore>()(
       setSecured: (v) => set({ secured: v }),
       locked: false,
       setLocked: (v) => set({ locked: v }),
+      sessionStartedAt: Date.now(),
+      failedUnlockAttempts: 0,
+      incrementFailedUnlockAttempts: () => set((prev) => ({ failedUnlockAttempts: prev.failedUnlockAttempts + 1 })),
+      resetFailedUnlockAttempts: () => set({ failedUnlockAttempts: 0 }),
 
       booted: false,
       setBooted: (v) => set({ booted: v }),
@@ -203,15 +223,44 @@ export const useJarvisStore = create<JarvisStore>()(
       setAiConnection: (v) => set({ aiConnection: v }),
 
       toasts: [],
-      pushToast: (message, variant = "info") =>
-        set((prev) => ({ toasts: [...prev.toasts, { id: nextId("toast"), message, variant }] })),
+      pushToast: (message, variant = "info", title) =>
+        set((prev) => ({ toasts: [...prev.toasts, { id: nextId("toast"), message, variant, title }] })),
       dismissToast: (id) => set((prev) => ({ toasts: prev.toasts.filter((t) => t.id !== id) })),
+
+      tasks: [],
+      addTask: (input) => {
+        const now = Date.now();
+        const task: JarvisTask = {
+          id: nextId("task"),
+          title: input.title,
+          description: input.description,
+          status: "PENDING",
+          priority: input.priority ?? "medium",
+          createdAt: now,
+          updatedAt: now,
+          dueAt: input.dueAt,
+        };
+        set((prev) => ({ tasks: [...prev.tasks, task] }));
+        return task;
+      },
+      updateTaskStatus: (id, status) => {
+        const state = get();
+        const idx = state.tasks.findIndex((t) => t.id === id);
+        if (idx === -1) return null;
+        const updated: JarvisTask = { ...state.tasks[idx], status, updatedAt: Date.now() };
+        const next = [...state.tasks];
+        next[idx] = updated;
+        set({ tasks: next });
+        return updated;
+      },
+      removeTask: (id) => set((prev) => ({ tasks: prev.tasks.filter((t) => t.id !== id) })),
     }),
     {
       name: "jarvis-os-store",
       partialize: (state) => ({
         settings: state.settings,
         secured: state.secured,
+        tasks: state.tasks,
       }),
       // Zustand's default merge is a shallow Object.assign at the top
       // level, so a persisted `settings` object from an older schema

@@ -41,6 +41,11 @@ export const AVAILABLE_COMMANDS = [
   "memory status",
   "clear terminal",
   "deploy agents",
+  "create task <title>",
+  "list tasks",
+  "complete task <title>",
+  "cancel task <title>",
+  "search tasks <query>",
   "open <screen>",
   "help",
 ];
@@ -140,6 +145,43 @@ export function dispatchCommand(rawInput: string, ctx: DispatchContext = {}): Di
       response:
         "Agent interfaces are provisioned but inactive: Research, Productivity, Security, Analytics, Memory, Voice, Automation. Connect an n8n workflow to bring one online.",
     };
+  }
+
+  if (lower.startsWith("create task ")) {
+    const title = input.slice("create task ".length).trim();
+    if (title) {
+      const task = store.addTask({ title });
+      return { handled: true, response: `Task created: "${task.title}".` };
+    }
+  }
+
+  if (lower === "list tasks" || lower === "tasks") {
+    if (store.tasks.length === 0) return { handled: true, response: "No tasks yet." };
+    const lines = store.tasks.map((t) => `  [${t.status}] ${t.title}`).join("\n");
+    return { handled: true, response: `Tasks:\n${lines}` };
+  }
+
+  if (lower.startsWith("complete task ")) {
+    const query = lower.replace(/^complete task\s+/, "").trim();
+    const match = store.tasks.find((t) => t.title.toLowerCase().includes(query));
+    if (!match) return { handled: true, response: `No task found matching "${query}".` };
+    store.updateTaskStatus(match.id, "COMPLETED");
+    return { handled: true, response: `Marked "${match.title}" as completed.` };
+  }
+
+  if (lower.startsWith("cancel task ")) {
+    const query = lower.replace(/^cancel task\s+/, "").trim();
+    const match = store.tasks.find((t) => t.title.toLowerCase().includes(query));
+    if (!match) return { handled: true, response: `No task found matching "${query}".` };
+    store.updateTaskStatus(match.id, "CANCELLED");
+    return { handled: true, response: `Cancelled "${match.title}".` };
+  }
+
+  if (lower.startsWith("search tasks ")) {
+    const query = lower.replace(/^search tasks\s+/, "").trim();
+    const matches = store.tasks.filter((t) => t.title.toLowerCase().includes(query));
+    if (matches.length === 0) return { handled: true, response: `No tasks matching "${query}".` };
+    return { handled: true, response: matches.map((t) => `  [${t.status}] ${t.title}`).join("\n") };
   }
 
   if (lower.startsWith("open ")) {

@@ -17,6 +17,7 @@ import {
 } from "@/lib/memory/local";
 import { useSound } from "@/hooks/useSound";
 import { cn } from "@/lib/utils/cn";
+import { MemoryRecordsPanel } from "./MemoryRecordsPanel";
 
 const iconMap: Record<string, typeof User> = {
   user: User,
@@ -74,8 +75,8 @@ export function MemoryCore() {
       <div className="flex items-start gap-2 rounded-lg border border-cyan/15 bg-panel-strong px-3 py-2.5">
         <Info size={14} className="mt-0.5 shrink-0 text-cyan" />
         <p className="font-technical text-[10px] leading-relaxed tracking-[0.02em] text-text-secondary">
-          UI SIMULATION — figures below are stored locally in this browser (localStorage), not a live AI
-          memory database. Architecture is ready for a future vector-database backend.
+          CAPACITY SIMULATION — the gauges below simulate storage health, not real content. Actual
+          retrievable memories (what J.A.R.V.I.S remembers about you) are the records section further down.
         </p>
       </div>
 
@@ -134,6 +135,8 @@ export function MemoryCore() {
         <Sparkles size={16} className={cn(optimizing && "animate-spin-slow")} />
         {optimizing ? "OPTIMIZING..." : "OPTIMIZE MEMORY"}
       </motion.button>
+
+      <MemoryRecordsPanel />
     </div>
   );
 }

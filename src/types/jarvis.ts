@@ -31,6 +31,12 @@ export interface ChatMessage {
   content: string;
   createdAt: number;
   status?: "pending" | "streaming" | "complete" | "error";
+  toolCall?: {
+    toolName: string;
+    status: "pending_confirmation" | "running" | "success" | "error" | "cancelled";
+    summary?: string;
+    args?: Record<string, unknown>;
+  };
 }
 
 export interface TelemetrySnapshot {
@@ -138,4 +144,10 @@ export interface JarvisSettings {
   reducedMotion: boolean;
   skipBootAnimation: boolean;
   debugMode: boolean;
+
+  memoryProvider: "local" | "supabase" | "vector";
+  sttProvider: "browser" | "whisper" | "assemblyai";
+  ttsProvider: "browser" | "openai" | "elevenlabs";
+  strictToolConfirmation: boolean;
+  auditLoggingEnabled: boolean;
 }
