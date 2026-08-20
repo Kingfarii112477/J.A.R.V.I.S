@@ -8,6 +8,14 @@ const requestSchema = z.object({
   query: z.string().min(1).max(500),
 });
 
+/** Reports which provider (if any) would actually handle a search —
+ * never a boolean "on/off" that could be misread as "results are live
+ * right now." Used by the Research Mode panel's connection badge. */
+export async function GET() {
+  const provider = resolveResearchProvider();
+  return NextResponse.json({ available: provider !== null, providerId: provider?.id ?? null, label: provider?.label ?? null });
+}
+
 export async function POST(request: Request) {
   let body: unknown;
   try {

@@ -90,6 +90,14 @@ describe("dispatchCommand", () => {
     expect(result.response).toMatch(/Protocol matrix/);
   });
 
+  it("navigates to the Systems screen and gives an honest (non-committal) status on 'open research mode'", () => {
+    const navigate = vi.fn();
+    const result = dispatchCommand("open research mode", { navigate });
+    expect(result.handled).toBe(true);
+    expect(navigate).toHaveBeenCalledWith("/systems");
+    expect(result.response.toLowerCase()).not.toMatch(/planned interface|future update/);
+  });
+
   it("lists registered tools with their permission level on 'tools'", () => {
     const result = dispatchCommand("tools");
     expect(result.handled).toBe(true);

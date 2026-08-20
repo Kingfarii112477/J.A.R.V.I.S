@@ -8,6 +8,25 @@ export interface WebSearchOutcome {
   error?: string;
 }
 
+export interface ResearchStatus {
+  available: boolean;
+  providerId: string | null;
+  label: string | null;
+}
+
+/** Which provider (if any) is actually configured — for the Research Mode
+ * panel's connection badge, never for deciding whether to fabricate
+ * results (searchWeb's own unavailable check already handles that). */
+export async function getResearchStatus(): Promise<ResearchStatus> {
+  try {
+    const res = await fetch("/api/research");
+    if (!res.ok) return { available: false, providerId: null, label: null };
+    return await res.json();
+  } catch {
+    return { available: false, providerId: null, label: null };
+  }
+}
+
 /** Client-side entry point for "search the web" — the web_search tool and
  * the Research Mode UI both call this. Never invents results: an
  * unconfigured backend comes back as `available: false`, not an empty

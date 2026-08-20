@@ -5,6 +5,7 @@ import { BrainCircuit, Mic, Database, ShieldCheck, Atom, Crosshair, ChevronDown,
 import { motion, AnimatePresence } from "framer-motion";
 import { JarvisCore } from "@/components/3d/JarvisCore";
 import { HudPanel } from "@/components/hud/HudPanel";
+import { ResearchPanel } from "./ResearchPanel";
 import { useJarvisStore } from "@/store/jarvisStore";
 import { useJarvisState } from "@/hooks/useJarvisState";
 import type { SubsystemId } from "@/types/jarvis";
@@ -116,6 +117,8 @@ export function SystemsOverview() {
           ))}
         </HudPanel>
       </div>
+
+      <ResearchPanel />
     </div>
   );
 }

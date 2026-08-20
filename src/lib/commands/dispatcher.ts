@@ -130,9 +130,10 @@ export function dispatchCommand(rawInput: string, ctx: DispatchContext = {}): Di
   }
 
   if (lower === "open research mode" || lower === "research mode") {
+    ctx.navigate?.("/systems");
     return {
       handled: true,
-      response: "Research Agent is a planned interface — it isn't connected to a live workflow yet. It will be wired up to n8n in a future update.",
+      response: "Opening the Research Agent panel. It shows a real CONNECTED / NOT CONNECTED status — nothing is faked either way.",
     };
   }
 
