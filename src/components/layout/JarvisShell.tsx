@@ -16,6 +16,7 @@ import { useProactiveEngine } from "@/hooks/useProactiveEngine";
 import { useSessionIdleTimer } from "@/hooks/useSessionIdleTimer";
 import { useAuditBridge } from "@/hooks/useAuditBridge";
 import { PerfMonitor } from "@/components/common/PerfMonitor";
+import { ReasoningMonitor } from "@/components/common/ReasoningMonitor";
 
 export function JarvisShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -52,6 +53,7 @@ export function JarvisShell({ children }: { children: ReactNode }) {
         <BottomNav />
         <ToastStack />
         {debugMode && <PerfMonitor />}
+        {debugMode && <ReasoningMonitor />}
         {locked && <LockScreen />}
       </div>
     </MotionConfig>

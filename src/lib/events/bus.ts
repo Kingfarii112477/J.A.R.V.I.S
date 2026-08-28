@@ -32,9 +32,18 @@ export interface JarvisEventPayloads {
   "tool.completed": { toolName: string; callId: string; result: unknown; success: boolean; latencyMs: number };
   "tool.failed": { toolName: string; callId: string; message: string; sessionId: string };
 
-  "reasoning.started": { sessionId: string; text: string };
+  "reasoning.started": { sessionId: string; text: string; intent: string };
   "reasoning.iteration": { sessionId: string; iteration: number; maxIterations: number };
-  "reasoning.completed": { sessionId: string; iterations: number; toolCallCount: number; latencyMs: number; stoppedReason: string };
+  "reasoning.completed": {
+    sessionId: string;
+    intent: string;
+    iterations: number;
+    toolCallCount: number;
+    latencyMs: number;
+    stoppedReason: string;
+    providerId: string | null;
+    model: string | null;
+  };
   "reasoning.limit_reached": { sessionId: string; reason: string };
 
   "diagnostics.started": Record<string, never>;

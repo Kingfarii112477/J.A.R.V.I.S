@@ -81,7 +81,7 @@ describe("ReasoningEngine", () => {
     const result = await engine.run(baseInput({ userText: "is everything ok?" }), toolCtx, callbacks);
 
     expect(mockExecuteTool).toHaveBeenCalledTimes(1);
-    expect(mockExecuteTool).toHaveBeenCalledWith("system_status", {}, toolCtx, false);
+    expect(mockExecuteTool).toHaveBeenCalledWith("system_status", {}, toolCtx, false, "c1");
     expect(callbacks.onToolCallStart).toHaveBeenCalledWith({ callId: "c1", toolName: "system_status", args: {} });
     expect(callbacks.onToolCallResult).toHaveBeenCalledWith("c1", expect.objectContaining({ ok: true }));
     expect(result.stoppedReason).toBe("complete");
@@ -172,8 +172,8 @@ describe("ReasoningEngine", () => {
     const result = await engine.run(baseInput({ userText: "delete that memory" }), toolCtx, baseCallbacks({ onNeedsConfirmation }));
 
     expect(onNeedsConfirmation).toHaveBeenCalledWith({ callId: "c1", toolName: "memory_delete", args: { id: "mem-1" } });
-    expect(mockExecuteTool).toHaveBeenNthCalledWith(1, "memory_delete", { id: "mem-1" }, toolCtx, false);
-    expect(mockExecuteTool).toHaveBeenNthCalledWith(2, "memory_delete", { id: "mem-1" }, toolCtx, true);
+    expect(mockExecuteTool).toHaveBeenNthCalledWith(1, "memory_delete", { id: "mem-1" }, toolCtx, false, "c1");
+    expect(mockExecuteTool).toHaveBeenNthCalledWith(2, "memory_delete", { id: "mem-1" }, toolCtx, true, "c1");
     expect(result.stoppedReason).toBe("complete");
   });
 
@@ -286,5 +286,46 @@ describe("ReasoningEngine", () => {
     const result = await engine.run(baseInput({ userText: "   " }), toolCtx, baseCallbacks());
     expect(mockStream).not.toHaveBeenCalled();
     expect(result.stoppedReason).toBe("error");
+  });
+
+  it("emits reasoning.started with the classified intent for observability", async () => {
+    mockStream.mockReturnValue(decisionStream([{ type: "text", delta: "Sure." }, { type: "done", finishReason: "stop" }]));
+    const { eventBus } = await import("@/lib/events/bus");
+    const started: { text: string; intent: string }[] = [];
+    const off = eventBus.on("reasoning.started", (p) => started.push({ text: p.text, intent: p.intent }));
+
+    const engine = new ReasoningEngine();
+    await engine.run(baseInput({ userText: "check the system status please" }), toolCtx, baseCallbacks());
+
+    off();
+    expect(started).toEqual([{ text: "check the system status please", intent: "SYSTEM" }]);
+  });
+
+  it("emits reasoning.completed with intent and provider/model on a normal completion", async () => {
+    mockStream.mockReturnValue(decisionStream([{ type: "text", delta: "Done." }, { type: "done", finishReason: "stop" }]));
+    const { eventBus } = await import("@/lib/events/bus");
+    const completed: unknown[] = [];
+    const off = eventBus.on("reasoning.completed", (p) => completed.push(p));
+
+    const engine = new ReasoningEngine();
+    await engine.run(baseInput(), toolCtx, baseCallbacks());
+
+    off();
+    expect(completed).toHaveLength(1);
+    expect(completed[0]).toMatchObject({ intent: "CONVERSATION", stoppedReason: "complete", providerId: null, model: null });
+  });
+
+  it("also emits reasoning.completed (stoppedReason: fallback) when no provider is configured", async () => {
+    mockStream.mockReturnValue(decisionStream([{ type: "fallback" }]));
+    const { eventBus } = await import("@/lib/events/bus");
+    const completed: unknown[] = [];
+    const off = eventBus.on("reasoning.completed", (p) => completed.push(p));
+
+    const engine = new ReasoningEngine();
+    await engine.run(baseInput(), toolCtx, baseCallbacks());
+
+    off();
+    expect(completed).toHaveLength(1);
+    expect(completed[0]).toMatchObject({ stoppedReason: "fallback" });
   });
 });

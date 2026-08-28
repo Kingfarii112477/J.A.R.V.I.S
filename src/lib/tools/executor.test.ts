@@ -3,6 +3,7 @@ import { z } from "zod";
 import { toolRegistry } from "./registry";
 import { executeTool } from "./executor";
 import { useJarvisStore, defaultSettings } from "@/store/jarvisStore";
+import { eventBus } from "@/lib/events/bus";
 import type { ToolDefinition } from "@/types/tools";
 
 const ctx = { sessionId: "s1", source: "chat" as const };
@@ -49,6 +50,27 @@ describe("executeTool", () => {
     const result = await executeTool("test_safe", {}, ctx);
     expect(result.ok).toBe(true);
     expect(result.summary).toBe("value is 42");
+  });
+
+  it("uses the caller-supplied externalCallId instead of generating its own, so tool.completed correlates with the caller's own tool.requested", async () => {
+    toolRegistry.register({
+      name: "test_external_id",
+      description: "test",
+      parameters: z.object({}),
+      permission: "SAFE",
+      requiresConfirmation: false,
+      execute: async () => ({ value: 1 }),
+      formatResult: () => "ok",
+    });
+
+    const completedIds: string[] = [];
+    const off = eventBus.on("tool.completed", (p) => completedIds.push(p.callId));
+
+    const result = await executeTool("test_external_id", {}, ctx, false, "model-call-id-42");
+    off();
+
+    expect(result.callId).toBe("model-call-id-42");
+    expect(completedIds).toEqual(["model-call-id-42"]);
   });
 
   it("requires confirmation for a CONFIRM-level tool and does not execute until confirmed", async () => {

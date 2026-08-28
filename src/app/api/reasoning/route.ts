@@ -102,6 +102,7 @@ export async function POST(request: Request) {
     headers: {
       "Content-Type": "application/x-ndjson; charset=utf-8",
       "X-AI-Provider": provider?.providerId ?? "none",
+      "X-AI-Model": provider?.model ?? "none",
       "Cache-Control": "no-store",
     },
   });

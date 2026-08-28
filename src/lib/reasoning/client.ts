@@ -11,7 +11,11 @@ export async function* streamReasoningEndpoint(
   messages: ReasoningMessage[],
   tools: ToolSchemaForModel[],
   sessionId: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  /** Fired once, synchronously after the response headers arrive (before
+   * the body is read) — purely for observability (the dev reasoning
+   * monitor), never load-bearing for the reasoning loop itself. */
+  onMeta?: (meta: { providerId: string; model: string }) => void
 ): AsyncGenerator<ReasoningStreamEvent, void, unknown> {
   const res = await fetch("/api/reasoning", {
     method: "POST",
@@ -25,6 +29,8 @@ export async function* streamReasoningEndpoint(
     yield { type: "error", message: data.error ?? `Reasoning request failed (${res.status}).` };
     return;
   }
+
+  onMeta?.({ providerId: res.headers.get("X-AI-Provider") ?? "unknown", model: res.headers.get("X-AI-Model") ?? "unknown" });
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();

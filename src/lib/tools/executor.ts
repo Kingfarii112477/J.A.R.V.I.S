@@ -34,9 +34,16 @@ export async function executeTool(
   toolName: string,
   rawArgs: unknown,
   ctx: ToolExecutionContext,
-  confirmed = false
+  confirmed = false,
+  /** Lets a caller that already has its own correlation id (the
+   * ReasoningEngine uses the model's tool_call id) keep `tool.started` /
+   * `tool.completed` events matched to the `tool.requested` event it
+   * already emitted under that same id. Omitted by every other caller
+   * (the deterministic dispatcher/router, the terminal), which have no
+   * such id and get one generated as before. */
+  externalCallId?: string
 ): Promise<ExecuteToolResult> {
-  const callId = generateId("tool");
+  const callId = externalCallId ?? generateId("tool");
   const tool = toolRegistry.get(toolName);
 
   if (!tool) {

@@ -1,5 +1,6 @@
 import { JARVIS_SYSTEM_PROMPT } from "@/config/ai";
 import { assembleContext, type RetrievedMemoryContext, type PreviousToolExecution } from "@/lib/context/contextEngine";
+import { classifyIntent } from "@/lib/ai/router";
 import { toolsToJsonSchema, type ToolSchemaForModel } from "@/lib/tools/schema";
 import { executeTool, type ExecuteToolResult } from "@/lib/tools";
 import { eventBus } from "@/lib/events/bus";
@@ -121,6 +122,12 @@ export class ReasoningEngine {
   private toolCallCount = 0;
   private startedAt = 0;
   private tools: ToolSchemaForModel[] = [];
+  private intent = "CONVERSATION";
+  /** Populated once the first model turn's response headers arrive —
+   * observability only (dev reasoning monitor), never used for control
+   * flow within the loop itself. */
+  private providerId: string | null = null;
+  private model: string | null = null;
 
   async run(
     input: ReasoningRequestInput,
@@ -142,8 +149,11 @@ export class ReasoningEngine {
     this.startedAt = Date.now();
     this.iteration = 0;
     this.toolCallCount = 0;
+    this.intent = classifyIntent(normalized.userText);
+    this.providerId = null;
+    this.model = null;
 
-    eventBus.emit("reasoning.started", { sessionId: normalized.sessionId, text: normalized.userText });
+    eventBus.emit("reasoning.started", { sessionId: normalized.sessionId, text: normalized.userText, intent: this.intent });
 
     while (this.iteration < maxIterations) {
       if (options.signal?.aborted) {
@@ -161,6 +171,21 @@ export class ReasoningEngine {
       const decision = await this.requestModelDecision(input.sessionId, callbacks, options.signal);
 
       if (decision.kind === "fallback") {
+        // No reasoning.started counterpart was ever going to arrive for
+        // this run otherwise — emit reasoning.completed here too so
+        // anything observing the event bus (the dev reasoning monitor)
+        // always sees a matched started/completed pair, even when the
+        // client immediately drops back to the deterministic path.
+        eventBus.emit("reasoning.completed", {
+          sessionId: input.sessionId,
+          intent: this.intent,
+          iterations: this.iteration,
+          toolCallCount: this.toolCallCount,
+          latencyMs: Date.now() - this.startedAt,
+          stoppedReason: "fallback",
+          providerId: this.providerId,
+          model: this.model,
+        });
         return { usedReasoning: false, finalText: "", iterations: this.iteration, toolCallCount: this.toolCallCount, stoppedReason: "fallback" };
       }
       if (decision.kind === "error") {
@@ -254,7 +279,10 @@ export class ReasoningEngine {
     const parseErrors = new Map<string, string>();
 
     try {
-      for await (const event of streamReasoningEndpoint(this.messages, this.tools, sessionId, signal)) {
+      for await (const event of streamReasoningEndpoint(this.messages, this.tools, sessionId, signal, (meta) => {
+        this.providerId = meta.providerId;
+        this.model = meta.model;
+      })) {
         if (event.type === "fallback") return { kind: "fallback", text: "", toolCalls: [], parseErrors };
         if (event.type === "text") {
           text += event.delta;
@@ -353,7 +381,12 @@ export class ReasoningEngine {
     toolTimeoutMs: number
   ): Promise<ExecuteToolResult> {
     const runWithTimeout = (confirmed: boolean) =>
-      withTimeout(executeTool(call.toolName, call.args, toolCtx, confirmed), toolTimeoutMs, () => ({
+      // Pass this call's own id through so tool.started/tool.completed
+      // (emitted by executeTool) correlate with the tool.requested/
+      // tool.failed events emitted above and below under the same id —
+      // required for any event-bus consumer (e.g. the dev reasoning
+      // monitor) to match a call to its result.
+      withTimeout(executeTool(call.toolName, call.args, toolCtx, confirmed, call.callId), toolTimeoutMs, () => ({
         ok: false,
         callId: call.callId,
         toolName: call.toolName,
@@ -401,10 +434,13 @@ export class ReasoningEngine {
     const latencyMs = Date.now() - this.startedAt;
     eventBus.emit("reasoning.completed", {
       sessionId,
+      intent: this.intent,
       iterations: this.iteration,
       toolCallCount: this.toolCallCount,
       latencyMs,
       stoppedReason,
+      providerId: this.providerId,
+      model: this.model,
     });
     return {
       usedReasoning: true,
