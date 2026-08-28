@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { toolExecutionRateLimiter, rateLimitResponse } from "@/lib/security/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,9 @@ const requestSchema = z.object({
  * "not configured" response rather than fabricating a temperature when no
  * provider is set — see "Real Data vs Simulation" in the product design. */
 export async function POST(request: Request) {
+  const limited = rateLimitResponse(toolExecutionRateLimiter, request);
+  if (limited) return limited;
+
   const apiKey = process.env.OPENWEATHER_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "No weather provider is configured.", unavailable: true }, { status: 501 });

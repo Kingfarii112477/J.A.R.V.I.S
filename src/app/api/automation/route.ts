@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { listConfiguredWorkflows, getConfiguredWorkflow } from "@/lib/automation/registry";
 import { triggerWorkflow } from "@/lib/automation/n8nProvider";
+import { toolExecutionRateLimiter, rateLimitResponse } from "@/lib/security/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -20,6 +21,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const limited = rateLimitResponse(toolExecutionRateLimiter, request);
+  if (limited) return limited;
+
   let body: unknown;
   try {
     body = await request.json();

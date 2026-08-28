@@ -10,10 +10,10 @@ const validBody = {
   sessionId: "test-session",
 };
 
-function req(body: unknown) {
+function req(body: unknown, headers: Record<string, string> = {}) {
   return new Request("http://localhost/api/reasoning", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
 }
@@ -76,5 +76,15 @@ describe("POST /api/reasoning", () => {
     expect(res.headers.get("X-AI-Provider")).toBe("openrouter");
     const events = await readNdjson(res);
     expect(events).toEqual([{ type: "text", delta: "Hi" }, { type: "done", finishReason: "stop" }]);
+  });
+
+  it("returns 429 once a client exceeds the per-minute rate limit", async () => {
+    const headers = { "x-forwarded-for": "203.0.113.42" };
+    let lastRes: Response | null = null;
+    for (let i = 0; i < 31; i++) {
+      lastRes = await POST(req(validBody, headers));
+    }
+    expect(lastRes!.status).toBe(429);
+    expect(lastRes!.headers.get("Retry-After")).toBeTruthy();
   });
 });

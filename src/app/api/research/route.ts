@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveResearchProvider } from "@/lib/research";
+import { researchRateLimiter, rateLimitResponse } from "@/lib/security/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -17,6 +18,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const limited = rateLimitResponse(researchRateLimiter, request);
+  if (limited) return limited;
+
   let body: unknown;
   try {
     body = await request.json();

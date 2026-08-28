@@ -3,6 +3,7 @@ import { resolveProviderConfig } from "@/lib/ai";
 import { classifyIntent } from "@/lib/ai/router";
 import { streamReasoningTurn } from "@/lib/reasoning/providerAdapter";
 import type { ReasoningMessage, ReasoningStreamEvent } from "@/lib/reasoning/types";
+import { aiRateLimiter, rateLimitResponse } from "@/lib/security/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -51,6 +52,9 @@ const requestSchema = z.object({
  * (lib/tools/router.ts + /api/chat) completely unchanged.
  */
 export async function POST(request: Request) {
+  const limited = rateLimitResponse(aiRateLimiter, request);
+  if (limited) return limited;
+
   let body: unknown;
   try {
     body = await request.json();

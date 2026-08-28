@@ -4,6 +4,7 @@ import { resolveAIStream } from "@/lib/ai";
 import { classifyIntent } from "@/lib/ai/router";
 import { assembleContext } from "@/lib/context/contextEngine";
 import { JARVIS_SYSTEM_PROMPT } from "@/config/ai";
+import { aiRateLimiter, rateLimitResponse } from "@/lib/security/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,9 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const limited = rateLimitResponse(aiRateLimiter, request);
+  if (limited) return limited;
+
   let body: unknown;
   try {
     body = await request.json();

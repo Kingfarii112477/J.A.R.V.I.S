@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { callN8nWebhook } from "@/lib/ai/providers";
+import { toolExecutionRateLimiter, rateLimitResponse } from "@/lib/security/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,9 @@ const requestSchema = z.object({
  * client — the browser only ever talks to this route.
  */
 export async function POST(request: Request) {
+  const limited = rateLimitResponse(toolExecutionRateLimiter, request);
+  if (limited) return limited;
+
   const webhookUrl = process.env.N8N_WEBHOOK_URL || process.env.NEXT_PUBLIC_N8N_WEBHOOK;
   if (!webhookUrl) {
     return NextResponse.json({ error: "n8n is not configured on this deployment." }, { status: 503 });

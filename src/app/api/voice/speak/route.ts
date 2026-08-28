@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { voiceRateLimiter, rateLimitResponse } from "@/lib/security/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -21,6 +22,9 @@ export async function GET() {
  * Returns 501 with `unavailable: true` — never silent, never a fabricated
  * clip — when the requested provider has no server key. */
 export async function POST(request: Request) {
+  const limited = rateLimitResponse(voiceRateLimiter, request);
+  if (limited) return limited;
+
   let body: unknown;
   try {
     body = await request.json();
