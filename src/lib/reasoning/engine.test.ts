@@ -208,6 +208,47 @@ describe("ReasoningEngine", () => {
     expect(result.stoppedReason).toBe("complete");
   });
 
+  it("runs the memory-search-then-summary worked example from the Phase 3 spec", async () => {
+    mockStream
+      .mockReturnValueOnce(
+        decisionStream([
+          { type: "tool_call", callId: "c1", toolName: "memory_search", args: { query: "favorite color" }, argsRaw: "{}" },
+          { type: "done", finishReason: "tool_calls" },
+        ])
+      )
+      .mockReturnValueOnce(decisionStream([{ type: "text", delta: "You mentioned your favorite color is teal." }, { type: "done", finishReason: "stop" }]));
+    mockExecuteTool.mockResolvedValue({ ok: true, callId: "c1", toolName: "memory_search", result: { count: 1 }, summary: "Found 1 matching memory." });
+
+    const engine = new ReasoningEngine();
+    const result = await engine.run(baseInput({ userText: "what's my favorite color?" }), toolCtx, baseCallbacks());
+
+    expect(mockExecuteTool).toHaveBeenCalledWith("memory_search", { query: "favorite color" }, toolCtx, false, "c1");
+    expect(result.stoppedReason).toBe("complete");
+    expect(result.finalText).toBe("You mentioned your favorite color is teal.");
+  });
+
+  it("pauses an n8n workflow trigger on confirmation and only runs it for real once authorized", async () => {
+    mockStream
+      .mockReturnValueOnce(
+        decisionStream([
+          { type: "tool_call", callId: "c1", toolName: "n8n_workflow", args: { workflowId: "morning-routine", command: "run it" }, argsRaw: "{}" },
+          { type: "done", finishReason: "tool_calls" },
+        ])
+      )
+      .mockReturnValueOnce(decisionStream([{ type: "text", delta: "Workflow started as authorized." }, { type: "done", finishReason: "stop" }]));
+    mockExecuteTool
+      .mockResolvedValueOnce({ ok: false, callId: "c1", toolName: "n8n_workflow", needsConfirmation: true })
+      .mockResolvedValueOnce({ ok: true, callId: "c1", toolName: "n8n_workflow", result: { ok: true, executionId: "exec-1" }, summary: "Automation completed." });
+
+    const onNeedsConfirmation = vi.fn().mockResolvedValue(true);
+    const engine = new ReasoningEngine();
+    const result = await engine.run(baseInput({ userText: "run the morning routine" }), toolCtx, baseCallbacks({ onNeedsConfirmation }));
+
+    expect(onNeedsConfirmation).toHaveBeenCalledWith({ callId: "c1", toolName: "n8n_workflow", args: { workflowId: "morning-routine", command: "run it" } });
+    expect(mockExecuteTool).toHaveBeenNthCalledWith(2, "n8n_workflow", { workflowId: "morning-routine", command: "run it" }, toolCtx, true, "c1");
+    expect(result.stoppedReason).toBe("complete");
+  });
+
   it("never bypasses permission — a cancelled confirmation is never executed for real", async () => {
     mockStream
       .mockReturnValueOnce(decisionStream([{ type: "tool_call", callId: "c1", toolName: "memory_delete", args: { id: "mem-1" }, argsRaw: "{}" }, { type: "done", finishReason: "tool_calls" }]))
