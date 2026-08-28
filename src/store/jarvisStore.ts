@@ -12,6 +12,24 @@ import type {
 } from "@/types/jarvis";
 import type { JarvisTask, TaskStatus } from "@/types/tasks";
 
+const VALID_STT_PROVIDERS: readonly JarvisSettings["sttProvider"][] = ["browser", "whisper", "assemblyai"];
+const VALID_TTS_PROVIDERS: readonly JarvisSettings["ttsProvider"][] = ["browser", "openai", "elevenlabs", "azure"];
+
+/** Resolves a factory-default provider from a build-time env var, falling
+ * back to `fallback` when the var is unset or isn't one of the known
+ * values — never lets a typo'd env var produce an invalid provider id.
+ * Exported so the validation itself is directly testable without
+ * reaching into module-load-time environment state. Carries no secret
+ * (just a provider *name*, e.g. "assemblyai"), which is what makes it
+ * safe to read via the NEXT_PUBLIC_ prefix — Next.js inlines
+ * NEXT_PUBLIC_* vars into the client bundle at build time, which is
+ * exactly how a plain client-side Zustand default can know about a
+ * server operator's provider preference at all; the actual STT/TTS API
+ * keys stay server-only, read only from src/app/api/voice/*. */
+export function envDefaultProvider<T extends string>(envValue: string | undefined, valid: readonly T[], fallback: T): T {
+  return (valid as readonly string[]).includes(envValue ?? "") ? (envValue as T) : fallback;
+}
+
 export const defaultSettings: JarvisSettings = {
   aiName: "J.A.R.V.I.S.",
   language: "English",
@@ -46,8 +64,8 @@ export const defaultSettings: JarvisSettings = {
   debugMode: false,
 
   memoryProvider: "local",
-  sttProvider: "browser",
-  ttsProvider: "browser",
+  sttProvider: envDefaultProvider(process.env.NEXT_PUBLIC_VOICE_STT_PROVIDER, VALID_STT_PROVIDERS, "browser"),
+  ttsProvider: envDefaultProvider(process.env.NEXT_PUBLIC_VOICE_TTS_PROVIDER, VALID_TTS_PROVIDERS, "browser"),
   strictToolConfirmation: false,
   auditLoggingEnabled: true,
   autonomyLevel: 2,

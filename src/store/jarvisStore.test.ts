@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { useJarvisStore, defaultSettings, mergeJarvisStore } from "./jarvisStore";
+import { useJarvisStore, defaultSettings, mergeJarvisStore, envDefaultProvider } from "./jarvisStore";
 
 beforeEach(() => {
   useJarvisStore.setState({ settings: defaultSettings, state: "IDLE", previousState: "IDLE" });
@@ -47,6 +47,26 @@ describe("jarvisStore settings", () => {
     expect(settings.silenceTimeoutMs).toBe(2500);
     expect(settings.wakeWordMode).toBe("push-to-talk");
     expect(settings.ttsProvider).toBe(defaultSettings.ttsProvider);
+  });
+});
+
+describe("envDefaultProvider", () => {
+  const providers = ["browser", "whisper", "assemblyai"] as const;
+
+  it("uses the env value when it's one of the known providers", () => {
+    expect(envDefaultProvider("assemblyai", providers, "browser")).toBe("assemblyai");
+  });
+
+  it("falls back when the env var is unset", () => {
+    expect(envDefaultProvider(undefined, providers, "browser")).toBe("browser");
+  });
+
+  it("falls back rather than accepting an unrecognized/typo'd value", () => {
+    expect(envDefaultProvider("whispr", providers, "browser")).toBe("browser");
+  });
+
+  it("falls back for an empty string", () => {
+    expect(envDefaultProvider("", providers, "browser")).toBe("browser");
   });
 });
 
