@@ -11,6 +11,7 @@ import { computeTabComplete, completionText, type TabCompleteState } from "@/lib
 import { routeToTool } from "@/lib/tools/router";
 import { executeTool } from "@/lib/tools";
 import { memoryClient } from "@/lib/memory/client";
+import { ReasoningEngine } from "@/lib/reasoning/engine";
 import { getSessionId } from "@/lib/utils/id";
 import { cn } from "@/lib/utils/cn";
 
@@ -120,7 +121,57 @@ export function DiagnosticTerminal() {
       return;
     }
 
-    printLines(`Unrecognized command: "${text}". Type 'help' for available commands.`, "system");
+    // Neither the dispatcher nor the deterministic router recognized this
+    // — hand it to the same reasoning engine chat/voice use (not a
+    // separate implementation). Each terminal command is a fresh,
+    // stateless reasoning request: the terminal's line-based transcript
+    // doesn't carry conversational turns the way Chat's message list
+    // does, so there's no prior history to pass. A tool needing
+    // confirmation is never silently authorized from here — same as the
+    // deterministic-router path above, it's declined with a pointer to
+    // Chat or Voice, never bypassed.
+    let retrievedMemories: { content: string; type: string }[] = [];
+    try {
+      const results = await memoryClient.search(text, 5);
+      retrievedMemories = results.map((r) => ({ content: r.content, type: r.type }));
+    } catch {
+      // Best-effort — reasoning still works without retrieved memories.
+    }
+
+    const engine = new ReasoningEngine();
+    const reasoningResult = await engine.run(
+      {
+        userText: text,
+        sessionId: sessionIdRef.current,
+        screen: "diagnostics",
+        jarvisState: useJarvisStore.getState().state,
+        verbosity: "concise",
+        retrievedMemories,
+        history: [],
+      },
+      { sessionId: sessionIdRef.current, source: "terminal", navigate: (href) => router.push(href) },
+      {
+        onToolCallStart: (call) => printLines(`${call.toolName} — executing...`, "system"),
+        onToolCallResult: (_callId, toolResult) => {
+          if (toolResult.ok) printLines(toolResult.summary ?? "Done.", "output");
+          else printLines(toolResult.cancelled ? "Cancelled." : (toolResult.error ?? "Tool execution failed."), "system");
+        },
+        onNeedsConfirmation: async (call) => {
+          printLines(`"${call.toolName}" requires confirmation — run it from Chat or Voice to confirm.`, "system");
+          return false;
+        },
+      }
+    );
+
+    if (!reasoningResult.usedReasoning) {
+      printLines(`Unrecognized command: "${text}". Type 'help' for available commands.`, "system");
+    } else if (reasoningResult.stoppedReason === "error") {
+      printLines(reasoningResult.errorMessage ?? "Reasoning failed.", "system");
+    } else {
+      printLines(reasoningResult.finalText || "Done.", "output");
+    }
+
+    await delay(60);
     setBusy(false);
   }
 
