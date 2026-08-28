@@ -15,6 +15,7 @@ import { useNotificationBridge } from "@/hooks/useNotificationBridge";
 import { useProactiveEngine } from "@/hooks/useProactiveEngine";
 import { useSessionIdleTimer } from "@/hooks/useSessionIdleTimer";
 import { useAuditBridge } from "@/hooks/useAuditBridge";
+import { useMissionNotifications } from "@/hooks/useMissionNotifications";
 import { PerfMonitor } from "@/components/common/PerfMonitor";
 import { ReasoningMonitor } from "@/components/common/ReasoningMonitor";
 
@@ -28,6 +29,7 @@ export function JarvisShell({ children }: { children: ReactNode }) {
   useProactiveEngine();
   useSessionIdleTimer();
   useAuditBridge();
+  useMissionNotifications();
 
   return (
     <MotionConfig reducedMotion={reducedMotion ? "always" : "user"}>
