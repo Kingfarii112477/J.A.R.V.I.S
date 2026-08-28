@@ -114,6 +114,11 @@ export async function executeMissionTask(mission: Mission, task: MissionTask, ct
 
   if (result.stoppedReason === "aborted") {
     agentRegistry.setStatus(task.agent, { status: "standby", currentTaskId: null, currentMissionId: null });
+    // Always pair agent.started with a completion-shaped event, even on
+    // cancellation — otherwise the core's activeToolCalls particle
+    // counter (incremented on agent.started) would never decrement for
+    // a cancelled task.
+    eventBus.emit("agent.completed", { missionId: mission.id, taskId: task.id, agent: task.agent });
     return { ok: false, taskId: task.id, error: "Cancelled.", toolCallCount: result.toolCallCount, iterations: result.iterations, latencyMs };
   }
 

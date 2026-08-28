@@ -6,6 +6,7 @@ import { JarvisShell } from "@/components/layout/JarvisShell";
 import { useJarvisStore } from "@/store/jarvisStore";
 import { useTelemetryEngine } from "@/hooks/useTelemetry";
 import { eventBus } from "@/lib/events/bus";
+import { registerCoreReactions } from "@/lib/orchestration/coreReactions";
 
 export function AppShellGate({ children }: { children: ReactNode }) {
   const booted = useJarvisStore((s) => s.booted);
@@ -20,6 +21,7 @@ export function AppShellGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setHydrated(true);
+    registerCoreReactions();
     eventBus.emit("jarvis.boot", {});
   }, []);
 
