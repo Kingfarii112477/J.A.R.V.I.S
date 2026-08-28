@@ -35,7 +35,7 @@ npm run test    # vitest (unit tests)
 | -------------- | ------------------ |
 | `/dashboard`   | Command center overview, live metrics, quick actions |
 | `/chat`        | AI conversation with streaming responses |
-| `/voice`       | Voice command interface (Web Speech API) |
+| `/voice`       | Voice Command Center — real-time speech in/out, live language detection, waveform, confirmation flow |
 | `/systems`     | Subsystem health + power/protocol matrix |
 | `/diagnostics` | Diagnostic score, live metrics, interactive terminal |
 | `/radar`       | Animated tactical radar (canvas-based) |
@@ -56,7 +56,14 @@ src/
   hooks/          useJarvisState, useTelemetry, useVoice, useAI, useMessagePipeline, ...
   lib/
     ai/           Provider-agnostic AI abstraction (OpenRouter/Groq/OpenAI-compatible/n8n/demo)
-    voice/        STT/TTS provider interfaces (browser Web Speech API today)
+    reasoning/    Multi-step LLM tool-calling engine shared by chat/voice/terminal (see below)
+    orchestration/ Autonomous multi-step missions (planner, agent registry, approval manager)
+    voice/
+      stt/        Speech-to-text provider abstraction (AssemblyAI, browser fallback)
+      tts/        Text-to-speech provider abstraction (Azure AI Speech, OpenAI, ElevenLabs, browser fallback)
+      language/   Multilingual detection (English/Urdu/Hindi/Roman Urdu/Hinglish) + response-language policy
+      speechFormatter.ts  Speech-safe text rendering (numbers/punctuation), separate from chat display text
+      state.ts    VoiceState — a derived view of the shared JarvisState, not a second state machine
     commands/     Unified command dispatcher shared by chat, voice, terminal, and buttons
     telemetry/    Smoothed (lerp-based) simulated metrics engine
     diagnostics/  Shared diagnostics-run sequence
@@ -102,17 +109,82 @@ simulated, and voice uses the browser's built-in speech APIs. A small
 running without a live AI backend, and the memory screen is explicit that
 its numbers come from `localStorage`, not a real vector database.
 
+## Voice & multilingual intelligence
+
+J.A.R.V.I.S. is a genuine voice interface, not a chatbot with a microphone
+bolted on — voice is another sensory layer into the *same* reasoning
+engine, memory system, tool executor, and event bus that chat and the
+terminal already share. There is no separate "voice brain."
+
+```
+MIC → capture → STT (AssemblyAI / browser) → language detection
+    → ReasoningEngine (tools, memory, missions — identical to chat)
+    → speech-safe formatting → TTS (Azure / OpenAI / ElevenLabs / browser)
+    → playback, with the 3D core reacting to real audio amplitude
+```
+
+**Speech-to-text** (`lib/voice/stt/`): AssemblyAI is the primary production
+provider (`ASSEMBLYAI_API_KEY`); the browser's built-in `SpeechRecognition`
+is the zero-config fallback and is what runs with no configuration at all.
+If a configured server provider isn't actually set up, the app falls back
+to the browser recognizer automatically, once, with a visible toast — never
+a silent swap.
+
+**Text-to-speech** (`lib/voice/tts/`): Azure AI Speech is the primary
+production provider (`AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION`), selecting
+a language-appropriate neural voice per turn (see
+`lib/voice/tts/voiceProfiles.ts`). OpenAI TTS and ElevenLabs are also
+supported; the browser's `SpeechSynthesis` API is the always-available
+fallback. Same fallback philosophy as STT: real → configured fallback →
+browser → never a silent failure.
+
+**Supported languages**: English, Urdu (Arabic script), Hindi (Devanagari
+script), Roman Urdu (Urdu written in Latin letters), and Hinglish (natural
+Hindi/Urdu-English code-switching) — detected automatically per turn by a
+dependency-free heuristic classifier (`lib/voice/language/detect.ts`), with
+AssemblyAI's own per-utterance language code as one additional real signal.
+J.A.R.V.I.S. replies in the same language and style the user used by
+default (Settings → Voice & Language → Preferred Language can override
+this) — Roman Urdu is never auto-translated into formal script Urdu, since
+naturalness matters more than literal translation.
+
+**Voice settings** (Settings → Voice & Language): voice enabled/auto-speak,
+interrupt (barge-in), voice confirmations, activation mode, auto language
+detection, preferred language, auto-submit speech, silence timeout, STT/TTS
+provider with a live CONNECTED / FALLBACK / UNAVAILABLE status badge for
+each, voice rate/pitch/volume.
+
+**Browser & permissions**: voice input needs a browser that supports
+`SpeechRecognition`/`getUserMedia` (Chrome, Edge, Safari) — the app detects
+and reports this rather than failing silently. The microphone never
+activates without an explicit tap (push-to-talk/click-to-talk); there is no
+always-listening mode. Microphone permission state (granted/denied/not
+requested) is shown on the Voice screen with a clear explanation for each.
+
+**Deployment**: `ASSEMBLYAI_API_KEY` / `AZURE_SPEECH_KEY` /
+`AZURE_SPEECH_REGION` are server-only — reachable exclusively through
+`/api/voice/speak`, `/api/voice/transcribe`, and `/api/voice/status`, never
+sent to the browser under any `NEXT_PUBLIC_` variant, and never present in
+any response body (only in the outbound request headers to the upstream
+provider — see the route test suites under `src/app/api/voice/*` for this
+checked explicitly, not just assumed). `NEXT_PUBLIC_VOICE_STT_PROVIDER` /
+`NEXT_PUBLIC_VOICE_TTS_PROVIDER` are the one intentional exception — they
+carry only a provider *name*, never a secret, and set the factory-default
+provider a fresh session starts with (still just a default; Settings →
+Voice & Language always overrides it, and both still fall back
+automatically if their key turns out to be missing). All three voice
+routes share the app's existing per-client rate limiter.
+
 ## Notes on scope
 
 - **Memory**: Phase 1 uses `localStorage` only, deliberately kept separate
   from any future backend — see `lib/memory/local.ts`'s doc comment.
-- **Voice**: `lib/voice/stt.ts` / `lib/voice/tts.ts` define
-  provider-agnostic interfaces; only the zero-config browser implementation
-  is wired up today, but a server-proxied Whisper/ElevenLabs-style adapter
-  can implement the same contract without touching the Voice screen.
-- **Agents**: `deploy agents` / `open research mode` commands return honest
-  "not yet connected" responses rather than pretending to run real
-  autonomous agents — they're placeholders for future n8n workflows.
+- **Agents & missions**: `lib/orchestration/` runs real autonomous
+  multi-step missions (planner → task graph → specialist agents → approval
+  manager), reachable from chat, voice, or the terminal, and visible on
+  `/missions` — not a placeholder. `open research mode` on its own still
+  reports an honest CONNECTED / NOT CONNECTED status for the underlying
+  research provider rather than faking results either way.
 - React Compiler is not enabled in this project; two of
   `eslint-plugin-react-hooks`'s forward-compatibility rules
   (`purity`, `set-state-in-effect`) are turned off in `eslint.config.mjs`
