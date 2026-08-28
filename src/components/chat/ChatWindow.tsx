@@ -28,7 +28,20 @@ export function ChatWindow() {
   const clearMessages = useJarvisStore((s) => s.clearMessages);
   const aiConnection = useJarvisStore((s) => s.aiConnection);
 
-  const { sendMessage, runAIPath, confirmTool, cancelTool, generating, stop } = useMessagePipeline();
+  const {
+    sendMessage,
+    runAIPath,
+    confirmTool,
+    cancelTool,
+    generating,
+    stop,
+    startMission,
+    pauseMission,
+    resumeMission,
+    cancelMission,
+    authorizeMissionApproval,
+    denyMissionApproval,
+  } = useMessagePipeline();
   const playSound = useSound();
 
   const [input, setInput] = useState("");
@@ -103,6 +116,12 @@ export function ChatWindow() {
               onRetry={() => handleRetry(m.id)}
               onConfirmTool={() => confirmTool(m.id)}
               onCancelTool={() => cancelTool(m.id)}
+              onStartMission={() => m.mission && startMission(m.id, m.mission.missionId)}
+              onPauseMission={() => m.mission && pauseMission(m.mission.missionId)}
+              onResumeMission={() => m.mission && resumeMission(m.id, m.mission.missionId)}
+              onCancelMission={() => m.mission && cancelMission(m.id, m.mission.missionId)}
+              onAuthorizeMissionApproval={(approvalId) => authorizeMissionApproval(approvalId)}
+              onDenyMissionApproval={(approvalId) => denyMissionApproval(approvalId)}
             />
           ))}
           <div ref={bottomRef} />

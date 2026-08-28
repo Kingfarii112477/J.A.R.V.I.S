@@ -39,6 +39,11 @@ export interface ChatMessage {
     summary?: string;
     args?: Record<string, unknown>;
   };
+  /** Present when this assistant message is a mission proposal/progress
+   * card (see lib/orchestration/missionSnapshot.ts) — a lightweight,
+   * display-only snapshot refreshed via updateMessage() as mission.*
+   * events arrive, exactly like toolCall above. */
+  mission?: import("@/lib/orchestration/missionSnapshot").MissionSnapshot;
 }
 
 export interface TelemetrySnapshot {

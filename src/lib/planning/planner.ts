@@ -17,7 +17,10 @@ interface StageSignal {
 // single objective commonly implies several stages at once, e.g.
 // "research X, compare them, and write a report" is both a research
 // stage and (via the always-appended synthesis stage) a report stage.
-const STAGE_SIGNALS: StageSignal[] = [
+// Exported so lib/planning/objectiveDetection.ts can reuse the same
+// signals to decide whether a chat message reads as a mission objective
+// in the first place, rather than maintaining a second keyword list.
+export const STAGE_SIGNALS: StageSignal[] = [
   {
     agent: "research",
     test: /\b(research|search|find|source|investigate|look up|compare)\b/i,

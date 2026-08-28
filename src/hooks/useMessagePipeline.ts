@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useJarvisStore } from "@/store/jarvisStore";
 import { useJarvisState } from "@/hooks/useJarvisState";
@@ -8,12 +8,15 @@ import { useAI } from "@/hooks/useAI";
 import { dispatchCommand } from "@/lib/commands/dispatcher";
 import { generateId, getSessionId } from "@/lib/utils/id";
 import { getTTSProvider, browserTTSProvider } from "@/lib/voice/tts";
-import { eventBus } from "@/lib/events/bus";
+import { eventBus, type JarvisEventName } from "@/lib/events/bus";
 import { memoryClient } from "@/lib/memory/client";
 import { extractMemoriesFromText } from "@/lib/memory/extraction";
 import { executeTool } from "@/lib/tools";
 import { routeToTool, type ToolRouteMatch } from "@/lib/tools/router";
 import { ReasoningEngine, type ReasoningRequestInput } from "@/lib/reasoning/engine";
+import { looksLikeMissionObjective } from "@/lib/planning/objectiveDetection";
+import { orchestrator } from "@/lib/orchestration/orchestrator";
+import { toMissionSnapshot } from "@/lib/orchestration/missionSnapshot";
 import type { ToolCallStatus } from "@/types/jarvis";
 
 type ConfirmResolver = (approved: boolean) => void;
@@ -48,6 +51,57 @@ export function useMessagePipeline() {
   const pendingToolsRef = useRef<Map<string, ToolRouteMatch>>(new Map());
   const reasoningConfirmResolversRef = useRef<Map<string, ConfirmResolver>>(new Map());
   const reasoningAbortRef = useRef<AbortController | null>(null);
+  /** missionId -> the chat message id displaying that mission's card, so
+   * mission.* and agent.* event-bus events (fired by the orchestrator,
+   * which has no direct UI callback hooks the way ReasoningEngine does)
+   * can find and refresh the right message. */
+  const missionMsgIdRef = useRef<Map<string, string>>(new Map());
+
+  async function refreshMissionMessage(missionId: string) {
+    const msgId = missionMsgIdRef.current.get(missionId);
+    if (!msgId) return;
+    const mission = await orchestrator.getMission(missionId);
+    if (mission) updateMessage(msgId, { mission: toMissionSnapshot(mission) });
+  }
+
+  // One subscription set for every mission-scoped event that should
+  // refresh a visible mission card — mounted once per component using
+  // this pipeline (Chat/Voice screens), matching how ToolCallCard's
+  // updates flow through ReasoningEngine's own callbacks, just via the
+  // event bus instead since the orchestrator drives missions
+  // independently of any single screen's lifetime.
+  useEffect(() => {
+    const missionEvents: JarvisEventName[] = [
+      "mission.started",
+      "mission.task.started",
+      "mission.task.completed",
+      "mission.task.failed",
+      "mission.task.blocked",
+      "mission.task.cancelled",
+      "mission.completed",
+      "mission.failed",
+      "mission.paused",
+      "mission.resumed",
+      "mission.cancelled",
+      "plan.replanned",
+    ];
+    const offs = missionEvents.map((event) =>
+      eventBus.on(event, (payload) => {
+        const missionId = (payload as { missionId: string }).missionId;
+        void refreshMissionMessage(missionId);
+      })
+    );
+    const offApproval = [
+      eventBus.on("approval.requested", (p) => void refreshMissionMessage(p.missionId)),
+      eventBus.on("approval.granted", (p) => void refreshMissionMessage(p.missionId)),
+      eventBus.on("approval.denied", (p) => void refreshMissionMessage(p.missionId)),
+    ];
+    return () => {
+      for (const off of offs) off();
+      for (const off of offApproval) off();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function speak(text: string, onEnd?: () => void, isFallback = false) {
     if (!settings.autoSpeak || !settings.voiceEnabled) {
@@ -461,8 +515,82 @@ export function useMessagePipeline() {
       return;
     }
 
+    if (looksLikeMissionObjective(text)) {
+      void proposeMission(text);
+      return;
+    }
+
     void runReasoningPath(text, history, onFinalText);
   }
 
-  return { sendMessage, runAIPath, confirmTool, cancelTool, generating, stop, speak, stopSpeaking };
+  /** Deterministic decomposition of `objective` into a Mission (see
+   * lib/planning/planner.ts), rendered as a MissionCard the user must
+   * explicitly START — never launched automatically. Mirrors the spec's
+   * "MISSION PROPOSED ... [START MISSION]" flow. */
+  async function proposeMission(objective: string) {
+    goProcessing();
+    const mission = await orchestrator.createMission(objective, sessionId.current, "chat");
+    const msgId = generateId("msg");
+    missionMsgIdRef.current.set(mission.id, msgId);
+    addMessage({ id: msgId, role: "assistant", content: "", createdAt: Date.now(), status: "complete", mission: toMissionSnapshot(mission) });
+    goIdle();
+  }
+
+  /** Clicking START authorizes the plan (satisfying autonomy level 3's
+   * "approve the whole plan up front") and begins execution. Fire-and-
+   * forget from the UI's perspective — progress streams back in via the
+   * mission.* and agent.* event subscription above, not this promise. */
+  function startMission(msgId: string, missionId: string) {
+    missionMsgIdRef.current.set(missionId, msgId);
+    orchestrator.authorizePlan(missionId);
+    goProcessing();
+    orchestrator
+      .startMission(missionId, toolContext())
+      .then(() => refreshMissionMessage(missionId))
+      .finally(() => goIdle());
+  }
+
+  function pauseMission(missionId: string) {
+    orchestrator.pauseMission(missionId);
+  }
+
+  function resumeMission(msgId: string, missionId: string) {
+    missionMsgIdRef.current.set(missionId, msgId);
+    goProcessing();
+    orchestrator
+      .resumeMission(missionId, toolContext())
+      .then(() => refreshMissionMessage(missionId))
+      .finally(() => goIdle());
+  }
+
+  function cancelMission(msgId: string, missionId: string) {
+    missionMsgIdRef.current.set(missionId, msgId);
+    void orchestrator.cancelMission(missionId).then(() => refreshMissionMessage(missionId));
+  }
+
+  function authorizeMissionApproval(approvalId: string) {
+    goProcessing();
+    orchestrator.resolveApproval(approvalId, true);
+  }
+
+  function denyMissionApproval(approvalId: string) {
+    orchestrator.resolveApproval(approvalId, false);
+  }
+
+  return {
+    sendMessage,
+    runAIPath,
+    confirmTool,
+    cancelTool,
+    generating,
+    stop,
+    speak,
+    stopSpeaking,
+    startMission,
+    pauseMission,
+    resumeMission,
+    cancelMission,
+    authorizeMissionApproval,
+    denyMissionApproval,
+  };
 }

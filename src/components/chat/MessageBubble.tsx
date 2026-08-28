@@ -3,6 +3,7 @@ import { AlertTriangle, RotateCcw } from "lucide-react";
 import { CoreAvatar } from "@/components/common/CoreAvatar";
 import { TypingIndicator } from "./TypingIndicator";
 import { ToolCallCard } from "./ToolCallCard";
+import { MissionCard } from "./MissionCard";
 import type { ChatMessage } from "@/types/jarvis";
 import { cn } from "@/lib/utils/cn";
 
@@ -11,15 +12,32 @@ interface MessageBubbleProps {
   onRetry?: () => void;
   onConfirmTool?: () => void;
   onCancelTool?: () => void;
+  onStartMission?: () => void;
+  onPauseMission?: () => void;
+  onResumeMission?: () => void;
+  onCancelMission?: () => void;
+  onAuthorizeMissionApproval?: (approvalId: string) => void;
+  onDenyMissionApproval?: (approvalId: string) => void;
 }
 
 function formatTime(ts: number) {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-export function MessageBubble({ message, onRetry, onConfirmTool, onCancelTool }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  onRetry,
+  onConfirmTool,
+  onCancelTool,
+  onStartMission,
+  onPauseMission,
+  onResumeMission,
+  onCancelMission,
+  onAuthorizeMissionApproval,
+  onDenyMissionApproval,
+}: MessageBubbleProps) {
   const isUser = message.role === "user";
-  const isEmpty = !message.content && message.status === "streaming" && !message.toolCall;
+  const isEmpty = !message.content && message.status === "streaming" && !message.toolCall && !message.mission;
 
   return (
     <motion.div
@@ -34,7 +52,19 @@ export function MessageBubble({ message, onRetry, onConfirmTool, onCancelTool }:
           <ToolCallCard toolCall={message.toolCall} onConfirm={onConfirmTool} onCancel={onCancelTool} />
         )}
 
-        {!message.toolCall && (
+        {message.mission && (
+          <MissionCard
+            mission={message.mission}
+            onStart={onStartMission}
+            onPause={onPauseMission}
+            onResume={onResumeMission}
+            onCancel={onCancelMission}
+            onAuthorizeApproval={onAuthorizeMissionApproval}
+            onDenyApproval={onDenyMissionApproval}
+          />
+        )}
+
+        {!message.toolCall && !message.mission && (
           <div
             className={cn(
               "rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap",
