@@ -7,6 +7,7 @@ import { decideRecoveryAction } from "@/lib/execution/failureRecovery";
 import { retryDelayMs } from "@/lib/execution/retryPolicy";
 import { attemptReplan } from "@/lib/planning/replanner";
 import { executeMissionTask } from "./coordinator";
+import { storeMissionMemory } from "./missionMemory";
 import { eventBus } from "@/lib/events/bus";
 
 export interface MissionControlFlags {
@@ -94,6 +95,7 @@ export async function runExecutionLoop(
       const latencyMs = mission.completedAt - startedAt;
       if (mission.status === "COMPLETED") {
         eventBus.emit("mission.completed", { missionId: mission.id, latencyMs, completedSteps: mission.completedSteps });
+        void storeMissionMemory(mission);
       } else {
         mission.error = mission.error ?? "Every task failed or was blocked before the mission could produce a result.";
         eventBus.emit("mission.failed", { missionId: mission.id, reason: mission.error });

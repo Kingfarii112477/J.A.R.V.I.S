@@ -40,7 +40,10 @@ const SECRET_SHAPED_PATTERNS: RegExp[] = [
   /\b[A-Za-z0-9_-]{32,}\b/, // opaque high-entropy token/key shape (sk-…, ghp_…, JWTs, hex/base64 secrets)
 ];
 
-function isSecretShaped(text: string): boolean {
+/** Exported so any other code that stores free-text content into memory
+ * (e.g. lib/orchestration's mission-summary writes) can reuse this exact
+ * guard rather than re-implementing pattern matching for secrets. */
+export function isSecretShaped(text: string): boolean {
   return SECRET_SHAPED_PATTERNS.some((re) => re.test(text));
 }
 
