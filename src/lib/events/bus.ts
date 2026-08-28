@@ -26,8 +26,16 @@ export interface JarvisEventPayloads {
   "voice.speaking": { text: string };
   "voice.interrupted": Record<string, never>;
 
+  "tool.requested": { toolName: string; callId: string; params: unknown; sessionId: string };
+  "tool.permission_required": { toolName: string; callId: string; sessionId: string };
   "tool.started": { toolName: string; callId: string; params: unknown };
   "tool.completed": { toolName: string; callId: string; result: unknown; success: boolean; latencyMs: number };
+  "tool.failed": { toolName: string; callId: string; message: string; sessionId: string };
+
+  "reasoning.started": { sessionId: string; text: string };
+  "reasoning.iteration": { sessionId: string; iteration: number; maxIterations: number };
+  "reasoning.completed": { sessionId: string; iterations: number; toolCallCount: number; latencyMs: number; stoppedReason: string };
+  "reasoning.limit_reached": { sessionId: string; reason: string };
 
   "diagnostics.started": Record<string, never>;
   "diagnostics.completed": { score: number };
