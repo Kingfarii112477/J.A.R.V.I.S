@@ -7,6 +7,7 @@ import { HudPanel } from "@/components/hud/HudPanel";
 import { TypewriterLine } from "./TypewriterLine";
 import { useJarvisStore } from "@/store/jarvisStore";
 import { dispatchCommand, AVAILABLE_COMMANDS } from "@/lib/commands/dispatcher";
+import { handleMissionCommand, MISSION_COMMANDS } from "@/lib/commands/missionCommands";
 import { computeTabComplete, completionText, type TabCompleteState } from "@/lib/commands/autocomplete";
 import { routeToTool } from "@/lib/tools/router";
 import { executeTool } from "@/lib/tools";
@@ -15,7 +16,8 @@ import { ReasoningEngine } from "@/lib/reasoning/engine";
 import { getSessionId } from "@/lib/utils/id";
 import { cn } from "@/lib/utils/cn";
 
-const SUGGESTIONS = ["system status", "run diagnostics", "security check", "memory status", "help"];
+const SUGGESTIONS = ["system status", "run diagnostics", "security check", "memory status", "mission list", "help"];
+const ALL_TERMINAL_COMMANDS = [...AVAILABLE_COMMANDS, ...MISSION_COMMANDS];
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -86,6 +88,14 @@ export function DiagnosticTerminal() {
       } catch (err) {
         printLines(`Memory clear failed: ${err instanceof Error ? err.message : "Unknown error"}`, "system");
       }
+      setBusy(false);
+      return;
+    }
+
+    const missionResult = await handleMissionCommand(text, { navigate: (href) => router.push(href) });
+    if (missionResult?.handled) {
+      printLines(missionResult.response, "output");
+      await delay(60);
       setBusy(false);
       return;
     }
@@ -176,7 +186,7 @@ export function DiagnosticTerminal() {
   }
 
   function handleTabComplete() {
-    const next = computeTabComplete(input, AVAILABLE_COMMANDS, tabStateRef.current);
+    const next = computeTabComplete(input, ALL_TERMINAL_COMMANDS, tabStateRef.current);
     if (!next) return;
     tabStateRef.current = next;
     setInput(completionText(next));
@@ -276,7 +286,7 @@ export function DiagnosticTerminal() {
         />
         <span className="h-3.5 w-1.5 animate-pulse bg-cyan" aria-hidden />
         <datalist id="terminal-commands">
-          {AVAILABLE_COMMANDS.map((c) => (
+          {ALL_TERMINAL_COMMANDS.map((c) => (
             <option key={c} value={c} />
           ))}
         </datalist>
