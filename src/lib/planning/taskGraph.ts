@@ -105,7 +105,7 @@ export function getNewlyBlockedTasks(tasks: MissionTask[]): MissionTask[] {
 }
 
 export function isMissionComplete(tasks: MissionTask[]): boolean {
-  return tasks.every((t) => t.status === "COMPLETED" || t.status === "CANCELLED" || t.status === "BLOCKED");
+  return tasks.every((t) => t.status === "COMPLETED" || t.status === "CANCELLED" || t.status === "BLOCKED" || t.status === "FAILED");
 }
 
 export function hasFailedTask(tasks: MissionTask[]): boolean {
