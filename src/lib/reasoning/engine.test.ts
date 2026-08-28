@@ -195,6 +195,46 @@ describe("ReasoningEngine", () => {
     );
   });
 
+  it("continues reasoning over a partial result when one of several parallel tool calls fails", async () => {
+    mockStream
+      .mockReturnValueOnce(
+        decisionStream([
+          { type: "tool_call", callId: "c1", toolName: "weather", args: { city: "Paris" }, argsRaw: "{}" },
+          { type: "tool_call", callId: "c2", toolName: "task_list", args: {}, argsRaw: "{}" },
+          { type: "done", finishReason: "tool_calls" },
+        ])
+      )
+      .mockReturnValueOnce(decisionStream([{ type: "text", delta: "I got your tasks, but the weather lookup failed." }, { type: "done", finishReason: "stop" }]));
+    mockExecuteTool.mockImplementation(async (toolName) => {
+      if (toolName === "weather") return { ok: false, callId: "c1", toolName: "weather", error: "City not found." };
+      return { ok: true, callId: "c2", toolName: "task_list", result: { count: 2 }, summary: "2 open tasks." };
+    });
+
+    const callbacks = baseCallbacks();
+    const engine = new ReasoningEngine();
+    const result = await engine.run(baseInput({ userText: "weather and tasks" }), toolCtx, callbacks);
+
+    // The run doesn't crash or stop early on a partial failure — both
+    // results are folded back in and reasoning continues to completion.
+    expect(mockExecuteTool).toHaveBeenCalledTimes(2);
+    expect(callbacks.onToolCallResult).toHaveBeenCalledWith("c1", expect.objectContaining({ ok: false }));
+    expect(callbacks.onToolCallResult).toHaveBeenCalledWith("c2", expect.objectContaining({ ok: true }));
+    expect(result.stoppedReason).toBe("complete");
+    expect(result.finalText).toBe("I got your tasks, but the weather lookup failed.");
+  });
+
+  it("stops cleanly and skips the model call entirely when the caller has already aborted (user pressed STOP)", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    mockStream.mockReturnValue(decisionStream([{ type: "text", delta: "..." }, { type: "done", finishReason: "stop" }]));
+
+    const engine = new ReasoningEngine();
+    const result = await engine.run(baseInput(), toolCtx, baseCallbacks(), { signal: controller.signal });
+
+    expect(result.stoppedReason).toBe("aborted");
+    expect(mockStream).not.toHaveBeenCalled();
+  });
+
   it("stops after maxIterations rather than looping forever", async () => {
     mockStream.mockImplementation(() =>
       decisionStream([{ type: "tool_call", callId: `c${Math.random()}`, toolName: "task_list", args: {}, argsRaw: "{}" }, { type: "done", finishReason: "tool_calls" }])

@@ -124,6 +124,25 @@ describe("streamReasoningTurn", () => {
     expect(events).toEqual([{ type: "error", message: "network down" }]);
   });
 
+  it("emits an error event (never throws) when the request times out", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new DOMException("The operation was aborted.", "AbortError")));
+    const events = await collect(streamReasoningTurn(provider, baseMessages, []));
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "error" });
+  });
+
+  it("emits an error event (never throws) when the stream connection drops mid-read", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error("connection reset"));
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, body, text: async () => "" } as unknown as Response));
+
+    const events = await collect(streamReasoningTurn(provider, baseMessages, []));
+    expect(events).toEqual([{ type: "error", message: "connection reset" }]);
+  });
+
   it("skips malformed SSE lines instead of crashing the stream", async () => {
     vi.stubGlobal(
       "fetch",
