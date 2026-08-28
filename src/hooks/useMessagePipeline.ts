@@ -14,7 +14,7 @@ import { extractMemoriesFromText } from "@/lib/memory/extraction";
 import { executeTool } from "@/lib/tools";
 import { routeToTool, type ToolRouteMatch } from "@/lib/tools/router";
 import { ReasoningEngine, type ReasoningRequestInput } from "@/lib/reasoning/engine";
-import { looksLikeMissionObjective } from "@/lib/planning/objectiveDetection";
+import { looksLikeMissionObjective, looksLikeDemoMissionRequest } from "@/lib/planning/objectiveDetection";
 import { orchestrator } from "@/lib/orchestration/orchestrator";
 import { toMissionSnapshot } from "@/lib/orchestration/missionSnapshot";
 import type { ToolCallStatus } from "@/types/jarvis";
@@ -557,6 +557,11 @@ export function useMessagePipeline() {
       return;
     }
 
+    if (looksLikeDemoMissionRequest(text)) {
+      void proposeMission(text, onFinalText, true);
+      return;
+    }
+
     if (looksLikeMissionObjective(text)) {
       void proposeMission(text, onFinalText);
       return;
@@ -572,9 +577,11 @@ export function useMessagePipeline() {
    * acknowledgment (muted automatically when voice/autoSpeak is off, via
    * the existing speak() gating) so a voice-only session hears it too,
    * per "Certainly, Sir. I have prepared a six-step research mission." */
-  async function proposeMission(objective: string, onFinalText?: (text: string) => void) {
+  async function proposeMission(objective: string, onFinalText?: (text: string) => void, demo = false) {
     goProcessing();
-    const mission = await orchestrator.createMission(objective, sessionId.current, "chat");
+    const mission = demo
+      ? await orchestrator.createDemoMission(sessionId.current, "chat")
+      : await orchestrator.createMission(objective, sessionId.current, "chat");
     const msgId = generateId("msg");
     missionMsgIdRef.current.set(mission.id, msgId);
     pendingMissionRef.current = { msgId, missionId: mission.id };
@@ -582,7 +589,7 @@ export function useMessagePipeline() {
     const ack =
       mission.status === "FAILED"
         ? `I couldn't build a valid plan for that: ${mission.error ?? "the plan failed validation."}`
-        : `I've prepared a ${mission.tasks.length}-step mission for "${objective}". Say "proceed" to begin, or "cancel" to discard it.`;
+        : `I've prepared a ${mission.tasks.length}-step mission for "${mission.objective}". Say "proceed" to begin, or "cancel" to discard it.`;
     addMessage({ id: msgId, role: "assistant", content: ack, createdAt: Date.now(), status: "complete", mission: toMissionSnapshot(mission) });
     goSpeaking();
     onFinalText?.(ack);

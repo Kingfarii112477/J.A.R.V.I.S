@@ -39,6 +39,15 @@ export async function handleMissionCommand(rawInput: string, ctx: MissionCommand
   const text = rawInput.trim();
   const lower = text.toLowerCase();
 
+  if (lower === "mission demo") {
+    const mission = await orchestrator.createDemoMission(getSessionId(), "terminal");
+    const lines = mission.tasks.map((t) => `  [${t.status}] ${t.title} (${t.agent})`).join("\n");
+    return {
+      handled: true,
+      response: `Demo mission created: ${mission.id.slice(-8)} — "${mission.objective}"\n${lines}\nType 'mission start ${mission.id.slice(-8)}' to begin.`,
+    };
+  }
+
   if (lower === "mission list" || lower === "missions") {
     const missions = await orchestrator.listMissions();
     if (missions.length === 0) return { handled: true, response: "No missions yet — propose one from Chat, or type 'mission demo' to run the built-in demo mission." };
@@ -150,6 +159,7 @@ export async function handleMissionCommand(rawInput: string, ctx: MissionCommand
 }
 
 export const MISSION_COMMANDS = [
+  "mission demo",
   "mission list",
   "mission status <id>",
   "mission start <id>",

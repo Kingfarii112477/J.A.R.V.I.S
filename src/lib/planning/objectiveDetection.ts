@@ -2,6 +2,15 @@ import { STAGE_SIGNALS } from "./planner";
 
 const EXPLICIT_MISSION_PHRASES = /\b(start a mission|create a mission|run a mission|full analysis|comprehensive report)\b/i;
 const REPORT_PHRASES = /\b(create a report|prepare a report|write a report|save the findings)\b/i;
+const DEMO_MISSION_PHRASES = /\b(system analysis|analyze the system|run a system analysis|demo mission)\b/i;
+
+/** The spec's built-in "J.A.R.V.I.S System Analysis" demo — checked
+ * before the general objective decomposer so this exact phrasing always
+ * gets the fixed five-step demo plan (lib/orchestration/demoMission.ts)
+ * rather than the heuristic decomposer's own guess. */
+export function looksLikeDemoMissionRequest(text: string): boolean {
+  return DEMO_MISSION_PHRASES.test(text);
+}
 
 /**
  * Deterministic classifier deciding whether a chat/voice message reads

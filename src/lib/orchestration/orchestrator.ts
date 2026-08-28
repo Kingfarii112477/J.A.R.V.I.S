@@ -33,7 +33,19 @@ class AutonomousOrchestratorImpl {
   private live = new Map<string, Mission>();
 
   async createMission(objective: string, sessionId: string, source: MissionSource = "chat"): Promise<Mission> {
-    const mission = createHeuristicPlan(objective, sessionId);
+    return this.registerMission(createHeuristicPlan(objective, sessionId), source);
+  }
+
+  /** The spec's built-in "J.A.R.V.I.S System Analysis" demo mission — a
+   * fixed plan (lib/orchestration/demoMission.ts) rather than the
+   * heuristic decomposer, but registered through the exact same
+   * validate/persist/emit pipeline as any other mission. */
+  async createDemoMission(sessionId: string, source: MissionSource = "demo"): Promise<Mission> {
+    const { createDemoMission } = await import("./demoMission");
+    return this.registerMission(createDemoMission(sessionId), source);
+  }
+
+  private async registerMission(mission: Mission, source: MissionSource): Promise<Mission> {
     eventBus.emit("plan.created", { missionId: mission.id, taskCount: mission.tasks.length, source: mission.planSource });
 
     const validation = validatePlan(mission);
@@ -49,7 +61,7 @@ class AutonomousOrchestratorImpl {
 
     this.live.set(mission.id, mission);
     await localMissionStore.createMission(mission);
-    eventBus.emit("mission.created", { missionId: mission.id, objective, taskCount: mission.tasks.length, source });
+    eventBus.emit("mission.created", { missionId: mission.id, objective: mission.objective, taskCount: mission.tasks.length, source });
     return mission;
   }
 
