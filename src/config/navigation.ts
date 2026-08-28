@@ -7,6 +7,7 @@ import {
   Radar,
   BrainCircuit,
   Settings,
+  Rocket,
   type LucideIcon,
 } from "lucide-react";
 
@@ -21,6 +22,7 @@ export const navItems: NavItem[] = [
   { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutGrid },
   { id: "chat", label: "Chat", href: "/chat", icon: MessageSquare },
   { id: "voice", label: "Voice", href: "/voice", icon: Mic },
+  { id: "missions", label: "Missions", href: "/missions", icon: Rocket },
   { id: "systems", label: "Systems", href: "/systems", icon: Cpu },
   { id: "diagnostics", label: "Diagnostics", href: "/diagnostics", icon: Activity },
   { id: "radar", label: "Radar", href: "/radar", icon: Radar },
@@ -29,7 +31,7 @@ export const navItems: NavItem[] = [
 ];
 
 /** Primary slots shown directly in the mobile bottom bar; the rest live under "More". */
-export const primaryMobileNavIds = ["dashboard", "chat", "voice", "systems"];
+export const primaryMobileNavIds = ["dashboard", "chat", "voice", "missions"];
 
 export const moreMobileNavIds = navItems
   .map((item) => item.id)
