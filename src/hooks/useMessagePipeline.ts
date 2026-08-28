@@ -39,7 +39,7 @@ export function useMessagePipeline() {
   const settings = useJarvisStore((s) => s.settings);
   const pushToast = useJarvisStore((s) => s.pushToast);
 
-  const { state: jarvisState, goThinking, goSpeaking, goProcessing, goIdle, goError } = useJarvisState();
+  const { state: jarvisState, goThinking, goSpeaking, goProcessing, goIdle, goError, goWarning } = useJarvisState();
   const { send, stop: stopAIStream } = useAI();
 
   const [generating, setGenerating] = useState(false);
@@ -245,8 +245,13 @@ export function useMessagePipeline() {
       history,
     };
 
+    const { incrementActiveToolCalls, decrementActiveToolCalls } = useJarvisStore.getState();
+
     const engine = new ReasoningEngine();
     const result = await engine.run(input, toolContext(), {
+      // A slow, deliberate pulse each time the model reasons again —
+      // "reasoning: slow intelligent pulse".
+      onIteration: () => goThinking(),
       onTextDelta: (delta) => {
         if (!assistantMsgId) {
           assistantMsgId = generateId("msg");
@@ -259,6 +264,10 @@ export function useMessagePipeline() {
       onToolCallStart: (call) => {
         const msgId = generateId("msg");
         callIdToMsgId.set(call.callId, msgId);
+        // "tool execution: orbital energy movement" (PROCESSING) — and
+        // each concurrent call bumps the core's particle activity a
+        // little further ("multiple tools: increased particle activity").
+        incrementActiveToolCalls();
         goProcessing();
         addMessage({
           id: msgId,
@@ -270,10 +279,14 @@ export function useMessagePipeline() {
         });
       },
       onToolCallResult: (callId, toolResult) => {
+        decrementActiveToolCalls();
         const msgId = callIdToMsgId.get(callId);
         if (!msgId) return;
         const current = useJarvisStore.getState().messages.find((m) => m.id === msgId)?.toolCall;
         const status: ToolCallStatus = toolResult.cancelled ? "cancelled" : toolResult.ok ? "success" : "error";
+        // "tool error: warning pulse" — a genuine failure (not a user
+        // cancellation, which is an intentional choice, not an anomaly).
+        if (status === "error") goWarning();
         updateMessage(msgId, {
           content: status === "success" ? (toolResult.summary ?? "") : "",
           toolCall: {
@@ -290,6 +303,10 @@ export function useMessagePipeline() {
           const current = useJarvisStore.getState().messages.find((m) => m.id === msgId)?.toolCall;
           updateMessage(msgId, { toolCall: { toolName: current?.toolName ?? call.toolName, status: "pending_confirmation", args: current?.args } });
         }
+        // "confirmation: orange tactical pulse" — WARNING is J.A.R.V.I.S's
+        // existing orange-accented state, reused here rather than adding a
+        // new one.
+        goWarning();
         return new Promise<boolean>((resolve) => {
           if (msgId) reasoningConfirmResolversRef.current.set(msgId, resolve);
           else resolve(false);
@@ -364,6 +381,7 @@ export function useMessagePipeline() {
       reasoningConfirmResolversRef.current.delete(msgId);
       const current = useJarvisStore.getState().messages.find((m) => m.id === msgId)?.toolCall;
       if (current) updateMessage(msgId, { toolCall: { ...current, status: "running" } });
+      goProcessing();
       reasoningResolve(true);
       return;
     }

@@ -86,6 +86,23 @@ describe("jarvisStore failed unlock attempts", () => {
   });
 });
 
+describe("jarvisStore active tool calls", () => {
+  it("tracks concurrent tool calls for the 3D core's particle activity", () => {
+    useJarvisStore.setState({ activeToolCalls: 0 });
+    useJarvisStore.getState().incrementActiveToolCalls();
+    useJarvisStore.getState().incrementActiveToolCalls();
+    expect(useJarvisStore.getState().activeToolCalls).toBe(2);
+    useJarvisStore.getState().decrementActiveToolCalls();
+    expect(useJarvisStore.getState().activeToolCalls).toBe(1);
+  });
+
+  it("never goes negative", () => {
+    useJarvisStore.setState({ activeToolCalls: 0 });
+    useJarvisStore.getState().decrementActiveToolCalls();
+    expect(useJarvisStore.getState().activeToolCalls).toBe(0);
+  });
+});
+
 describe("jarvisStore toasts", () => {
   it("pushToast adds and dismissToast removes by id", () => {
     useJarvisStore.getState().pushToast("Optimization complete.", "success");

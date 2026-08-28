@@ -52,6 +52,7 @@ export function JarvisCore({
 }: JarvisCoreProps) {
   const [webglOk, setWebglOk] = useState(true);
   const reducedMotion = useJarvisStore((s) => s.settings.reducedMotion);
+  const activeToolCalls = useJarvisStore((s) => s.activeToolCalls);
 
   useEffect(() => {
     setWebglOk(isWebGLAvailable());
@@ -61,6 +62,10 @@ export function JarvisCore({
   const preset = qualityPresets[quality];
   const speed = reducedMotion ? Math.min(0.25, speedByState[state] ?? 1) : speedByState[state] ?? 1;
   const pulse = reducedMotion ? 0.02 : pulseByState[state] ?? 0.08;
+  // Reasoning executing more than one tool at once (parallel tool calls)
+  // reads as visibly busier particle motion — capped so it stays a subtle
+  // cue rather than a distracting speed-up.
+  const particleSpeed = reducedMotion ? speed : speed * (1 + Math.min(activeToolCalls, 3) * 0.15);
 
   const secondaryColor = state === "WARNING" || state === "ERROR" ? "#ff8a4c" : "#8b5cf6";
 
@@ -91,7 +96,7 @@ export function JarvisCore({
                 count={preset.particleCount}
                 color={color}
                 radius={2.3}
-                speed={speed}
+                speed={particleSpeed}
               />
               {showHologramBase && (
                 <Hologram color={color} secondaryColor={secondaryColor} y={-1.55} radius={1.3} />

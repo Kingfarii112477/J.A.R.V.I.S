@@ -148,6 +148,13 @@ interface JarvisStore {
   addTask: (input: { title: string; description?: string; priority?: JarvisTask["priority"]; dueAt?: number }) => JarvisTask;
   updateTaskStatus: (id: string, status: TaskStatus) => JarvisTask | null;
   removeTask: (id: string) => void;
+
+  /** How many tool calls the reasoning engine currently has in flight —
+   * drives the 3D core's particle activity ("multiple tools: increased
+   * particle activity"). Never persisted; always starts at 0. */
+  activeToolCalls: number;
+  incrementActiveToolCalls: () => void;
+  decrementActiveToolCalls: () => void;
 }
 
 let idCounter = 0;
@@ -254,6 +261,10 @@ export const useJarvisStore = create<JarvisStore>()(
         return updated;
       },
       removeTask: (id) => set((prev) => ({ tasks: prev.tasks.filter((t) => t.id !== id) })),
+
+      activeToolCalls: 0,
+      incrementActiveToolCalls: () => set((prev) => ({ activeToolCalls: prev.activeToolCalls + 1 })),
+      decrementActiveToolCalls: () => set((prev) => ({ activeToolCalls: Math.max(0, prev.activeToolCalls - 1) })),
     }),
     {
       name: "jarvis-os-store",
