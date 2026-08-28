@@ -152,4 +152,9 @@ export interface JarvisSettings {
   ttsProvider: "browser" | "openai" | "elevenlabs";
   strictToolConfirmation: boolean;
   auditLoggingEnabled: boolean;
+
+  /** 0 Manual / 1 Assisted / 2 Supervised (default) / 3 Delegated /
+   * 4 Controlled Autonomous — see lib/autonomy/autonomyLevels.ts. Governs
+   * every autonomous mission; never changed automatically. */
+  autonomyLevel: 0 | 1 | 2 | 3 | 4;
 }

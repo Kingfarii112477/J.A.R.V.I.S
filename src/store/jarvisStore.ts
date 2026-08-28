@@ -49,6 +49,7 @@ export const defaultSettings: JarvisSettings = {
   ttsProvider: "browser",
   strictToolConfirmation: false,
   auditLoggingEnabled: true,
+  autonomyLevel: 2,
 };
 
 export const defaultSubsystems: Subsystem[] = [

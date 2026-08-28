@@ -63,6 +63,47 @@ export interface JarvisEventPayloads {
   "notification.push": { id: string; type: NotificationType; title: string; message?: string };
 
   "settings.changed": { keys: string[] };
+
+  // ---- Phase 4: autonomous agent orchestration ----
+  // Mission-task events are namespaced "mission.task.*" (distinct from
+  // the existing bare "task.*" above, which belongs to the simple
+  // JarvisTask to-do list the task_create/task_list tools manage — a
+  // MissionTask is a different, richer concept and must never be
+  // confused with it). missionId doubles as every mission-scoped event's
+  // correlation id; taskId/agentId narrow further where applicable.
+  "mission.created": { missionId: string; objective: string; taskCount: number; source: "chat" | "voice" | "terminal" | "demo" };
+  "mission.started": { missionId: string };
+  "mission.completed": { missionId: string; latencyMs: number; completedSteps: number };
+  "mission.failed": { missionId: string; reason: string };
+  "mission.cancelled": { missionId: string };
+  "mission.paused": { missionId: string };
+  "mission.resumed": { missionId: string };
+
+  "plan.created": { missionId: string; taskCount: number; source: "llm" | "heuristic" };
+  "plan.validated": { missionId: string; valid: boolean; errors: string[] };
+  "plan.replanned": { missionId: string; note: string };
+
+  "mission.task.created": { missionId: string; taskId: string; title: string; agent: string };
+  "mission.task.started": { missionId: string; taskId: string; agent: string };
+  "mission.task.completed": { missionId: string; taskId: string; agent: string; latencyMs: number };
+  "mission.task.failed": { missionId: string; taskId: string; agent: string; error: string; category: string };
+  "mission.task.blocked": { missionId: string; taskId: string; reason: string };
+  "mission.task.cancelled": { missionId: string; taskId: string };
+
+  "agent.started": { missionId: string; taskId: string; agent: string };
+  "agent.thinking": { missionId: string; taskId: string; agent: string };
+  "agent.tool_requested": { missionId: string; taskId: string; agent: string; toolName: string };
+  "agent.tool_completed": { missionId: string; taskId: string; agent: string; toolName: string; success: boolean };
+  "agent.failed": { missionId: string; taskId: string; agent: string; error: string };
+  "agent.completed": { missionId: string; taskId: string; agent: string };
+
+  "approval.requested": { approvalId: string; missionId: string; taskId?: string; kind: "mission_plan" | "tool_call"; toolName?: string; risk: "LOW" | "MEDIUM" | "HIGH" };
+  "approval.granted": { approvalId: string; missionId: string };
+  "approval.denied": { approvalId: string; missionId: string };
+
+  "autonomy.changed": { previousLevel: number; level: number };
+
+  "memory.extracted": { missionId: string; count: number };
 }
 
 export type JarvisEventName = keyof JarvisEventPayloads;

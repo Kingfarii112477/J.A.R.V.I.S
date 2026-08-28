@@ -21,6 +21,10 @@ export interface ReasoningRequestInput {
    * run) — gives the model continuity without replaying full message
    * history. Optional and capped by the context engine. */
   previousToolExecutions?: PreviousToolExecution[];
+  /** Extra system-prompt text prepended for an agent-scoped run (see
+   * lib/agents/agentFactory.ts) — e.g. "[Acting as Research Agent] ...".
+   * Absent for ordinary chat/voice/terminal turns. */
+  agentPreamble?: string;
   history: { role: "user" | "assistant"; content: string }[];
 }
 
@@ -53,6 +57,12 @@ export interface ReasoningOptions {
    * run forever. Default 20s. */
   toolTimeoutMs?: number;
   signal?: AbortSignal;
+  /** Restricts the tool schemas offered to the model to this subset —
+   * used to enforce an agent's allowedTools (lib/agents/types.ts). Names
+   * not in the registry (or not SAFE/CONFIRM) are silently ignored, same
+   * as the unrestricted default. Undefined (the default) offers every
+   * SAFE/CONFIRM tool, unchanged from Phase 3 behavior. */
+  allowedTools?: string[];
 }
 
 export type ReasoningStopReason =
@@ -144,7 +154,9 @@ export class ReasoningEngine {
     if (normalized === null) {
       return { usedReasoning: true, finalText: "", iterations: 0, toolCallCount: 0, stoppedReason: "error", errorMessage: "Empty request." };
     }
-    this.tools = toolsToJsonSchema();
+    this.tools = options.allowedTools
+      ? toolsToJsonSchema().filter((t) => options.allowedTools!.includes(t.name))
+      : toolsToJsonSchema();
     this.buildContext(normalized);
     this.startedAt = Date.now();
     this.iteration = 0;
@@ -250,8 +262,9 @@ export class ReasoningEngine {
    * alongside the JSON-schema `tools` payload sent for native function
    * calling. */
   private buildContext(input: ReasoningRequestInput) {
+    const systemPrompt = input.agentPreamble ? `${JARVIS_SYSTEM_PROMPT}\n\n${input.agentPreamble}` : JARVIS_SYSTEM_PROMPT;
     const assembled = assembleContext({
-      systemPrompt: JARVIS_SYSTEM_PROMPT,
+      systemPrompt,
       screen: input.screen,
       jarvisState: input.jarvisState,
       aiName: "J.A.R.V.I.S.",

@@ -84,6 +84,9 @@ const memoryDeleteTool: ToolDefinition<{ query: string }, { found: boolean; cont
   permission: "CONFIRM",
   requiresConfirmation: true,
   riskNote: "Permanent deletion — this cannot be undone.",
+  risk: "MEDIUM",
+  sideEffects: "DESTRUCTIVE",
+  reversible: false,
   async execute(args) {
     const matches = await memoryClient.search(args.query, 1);
     const match = matches[0];
@@ -210,6 +213,10 @@ const n8nWorkflowTool: ToolDefinition<
   permission: "CONFIRM",
   requiresConfirmation: true,
   riskNote: "Runs a real external automation workflow with the parameters shown.",
+  risk: "HIGH",
+  sideEffects: "EXTERNAL",
+  reversible: false,
+  costEstimate: "1 workflow execution",
   async execute(args) {
     const { triggerAutomation } = await import("@/lib/automation/client");
     const { getSessionId } = await import("@/lib/utils/id");
