@@ -12,6 +12,11 @@ export interface WorkflowTriggerPayload {
 export interface WorkflowTriggerResult {
   status: "triggered" | "completed";
   response?: string;
+  /** Present only if the workflow's own response body includes one —
+   * n8n doesn't return this from a webhook call by default; a workflow
+   * has to explicitly echo it back. Lets a follow-up get_workflow_status
+   * call reference this specific run. */
+  executionId?: string;
   raw?: unknown;
 }
 
@@ -37,7 +42,12 @@ export async function triggerWorkflow(webhookUrl: string, payload: WorkflowTrigg
   }
 
   const data = await res.json().catch(() => null);
-  return { status: "completed", response: data?.response ?? data?.output ?? data?.text, raw: data };
+  return {
+    status: "completed",
+    response: data?.response ?? data?.output ?? data?.text,
+    executionId: typeof data?.executionId === "string" ? data.executionId : undefined,
+    raw: data,
+  };
 }
 
 /** Real execution-status polling via n8n's REST API — only available when

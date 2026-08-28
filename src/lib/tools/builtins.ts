@@ -77,6 +77,25 @@ const memoryStoreTool: ToolDefinition<{ type: MemoryType; content: string; impor
   },
 };
 
+const memoryDeleteTool: ToolDefinition<{ query: string }, { found: boolean; content?: string }> = {
+  name: "memory_delete",
+  description: "Permanently delete the stored memory record that best matches a description.",
+  parameters: z.object({ query: z.string().min(1).max(200) }),
+  permission: "CONFIRM",
+  requiresConfirmation: true,
+  riskNote: "Permanent deletion — this cannot be undone.",
+  async execute(args) {
+    const matches = await memoryClient.search(args.query, 1);
+    const match = matches[0];
+    if (!match) return { found: false };
+    await memoryClient.remove(match.id);
+    return { found: true, content: match.content };
+  },
+  formatResult(r) {
+    return r.found ? `Deleted memory: "${r.content}".` : "No memory found matching that description.";
+  },
+};
+
 const openScreenTool: ToolDefinition<{ screen: z.infer<typeof screenEnum> }, { screen: string }> = {
   name: "open_screen",
   description: "Navigate the interface to a specific screen.",
@@ -171,12 +190,16 @@ const weatherTool: ToolDefinition<{ city: string }, { available: boolean; city?:
   },
 };
 
-const n8nWorkflowTool: ToolDefinition<{ workflowId: string; command: string }, { ok: boolean; response?: string; error?: string }> = {
+const n8nWorkflowTool: ToolDefinition<
+  { workflowId: string; command: string },
+  { ok: boolean; response?: string; executionId?: string; error?: string }
+> = {
   name: "n8n_workflow",
-  description: "Trigger a configured n8n automation workflow by id.",
+  description: "Trigger a configured n8n automation workflow by id (this is the 'run_workflow' capability — only ever an explicitly pre-configured workflow, never one the model invents).",
   parameters: z.object({ workflowId: z.string().min(1).max(80), command: z.string().min(1).max(2000) }),
   permission: "CONFIRM",
   requiresConfirmation: true,
+  riskNote: "Runs a real external automation workflow with the parameters shown.",
   async execute(args) {
     const { triggerAutomation } = await import("@/lib/automation/client");
     const { getSessionId } = await import("@/lib/utils/id");
@@ -184,7 +207,27 @@ const n8nWorkflowTool: ToolDefinition<{ workflowId: string; command: string }, {
   },
   formatResult(r) {
     if (!r.ok) return `Automation failed: ${r.error ?? "unknown error"}.`;
-    return r.response ? `Automation complete: ${r.response}` : "Automation completed.";
+    const base = r.response ? `Automation complete: ${r.response}` : "Automation completed.";
+    return r.executionId ? `${base} (execution ${r.executionId})` : base;
+  },
+};
+
+const getWorkflowStatusTool: ToolDefinition<{ executionId: string }, { available: boolean; status?: string; error?: string }> = {
+  name: "get_workflow_status",
+  description: "Check the execution status of a previously triggered n8n workflow run by its execution id.",
+  parameters: z.object({ executionId: z.string().min(1).max(200) }),
+  permission: "SAFE",
+  requiresConfirmation: false,
+  async execute(args) {
+    const { getAutomationStatus } = await import("@/lib/automation/client");
+    const outcome = await getAutomationStatus(args.executionId);
+    if (!outcome.available) return { available: false };
+    if (outcome.error) throw new Error(outcome.error);
+    return { available: true, status: outcome.status };
+  },
+  formatResult(r) {
+    if (!r.available) return "Workflow status polling is not configured on this deployment.";
+    return `Workflow status: ${r.status}.`;
   },
 };
 
@@ -305,12 +348,14 @@ export function registerBuiltinTools() {
     runDiagnosticsTool,
     memorySearchTool,
     memoryStoreTool,
+    memoryDeleteTool,
     openScreenTool,
     webSearchTool,
     calculatorTool,
     timeTool,
     weatherTool,
     n8nWorkflowTool,
+    getWorkflowStatusTool,
     taskCreateTool,
     taskListTool,
     taskCompleteTool,
