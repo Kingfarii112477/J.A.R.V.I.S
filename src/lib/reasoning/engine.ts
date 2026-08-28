@@ -357,7 +357,7 @@ export class ReasoningEngine {
     eventBus.emit("tool.permission_required", { toolName: call.toolName, callId: call.callId, sessionId });
     const approved = await callbacks.onNeedsConfirmation({ callId: call.callId, toolName: call.toolName, args: call.args });
     if (!approved) {
-      return { ok: false, callId: call.callId, toolName: call.toolName, error: "Cancelled by user — authorization was not granted." };
+      return { ok: false, callId: call.callId, toolName: call.toolName, cancelled: true, error: "Cancelled by user — authorization was not granted." };
     }
     return runWithTimeout(true);
   }

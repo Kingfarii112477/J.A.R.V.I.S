@@ -25,6 +25,8 @@ export const JARVIS_STATES: JarvisState[] = [
   "OFFLINE",
 ];
 
+export type ToolCallStatus = "pending_confirmation" | "running" | "success" | "error" | "cancelled";
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -33,7 +35,7 @@ export interface ChatMessage {
   status?: "pending" | "streaming" | "complete" | "error";
   toolCall?: {
     toolName: string;
-    status: "pending_confirmation" | "running" | "success" | "error" | "cancelled";
+    status: ToolCallStatus;
     summary?: string;
     args?: Record<string, unknown>;
   };

@@ -13,6 +13,10 @@ export interface ExecuteToolResult {
   summary?: string;
   error?: string;
   needsConfirmation?: boolean;
+  /** Set only when a pending confirmation was explicitly declined by the
+   * user — distinguishes "the user said no" from any other failure so a
+   * caller can show a neutral "cancelled" status instead of an error. */
+  cancelled?: boolean;
 }
 
 /**

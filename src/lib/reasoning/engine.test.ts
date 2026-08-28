@@ -189,7 +189,10 @@ describe("ReasoningEngine", () => {
     await engine.run(baseInput({ userText: "delete that memory" }), toolCtx, callbacks);
 
     expect(mockExecuteTool).toHaveBeenCalledTimes(1); // never called a second (confirmed) time
-    expect(callbacks.onToolCallResult).toHaveBeenCalledWith("c1", expect.objectContaining({ ok: false, error: expect.stringContaining("not granted") }));
+    expect(callbacks.onToolCallResult).toHaveBeenCalledWith(
+      "c1",
+      expect.objectContaining({ ok: false, cancelled: true, error: expect.stringContaining("not granted") })
+    );
   });
 
   it("stops after maxIterations rather than looping forever", async () => {
