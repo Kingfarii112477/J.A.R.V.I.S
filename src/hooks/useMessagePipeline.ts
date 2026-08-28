@@ -46,6 +46,7 @@ export function useMessagePipeline() {
   const updateMessage = useJarvisStore((s) => s.updateMessage);
   const settings = useJarvisStore((s) => s.settings);
   const pushToast = useJarvisStore((s) => s.pushToast);
+  const pushTerminalLine = useJarvisStore((s) => s.pushTerminalLine);
 
   const { state: jarvisState, goThinking, goSpeaking, goProcessing, goIdle, goError, goWarning } = useJarvisState();
   const { send, stop: stopAIStream } = useAI();
@@ -88,6 +89,12 @@ export function useMessagePipeline() {
     mixedLanguage: false,
     normalizedLanguage: "en",
   });
+  /** Set once per user turn at the top of sendMessage, same pattern as
+   * lastLanguageRef above — the single point of truth toolContext() and
+   * the dispatcher call below read from, instead of each hardcoding a
+   * guess. Drives both the [VOICE]/[JARVIS] terminal echo (see
+   * sendMessage) and the audit log's TOOL_EXECUTION source field. */
+  const lastSourceRef = useRef<"chat" | "voice">("chat");
 
   async function refreshMissionMessage(missionId: string) {
     const msgId = missionMsgIdRef.current.get(missionId);
@@ -332,7 +339,7 @@ export function useMessagePipeline() {
   }
 
   function toolContext() {
-    return { sessionId: sessionId.current, source: "chat" as const, navigate: (href: string) => router.push(href) };
+    return { sessionId: sessionId.current, source: lastSourceRef.current, navigate: (href: string) => router.push(href) };
   }
 
   async function runToolPath(match: ToolRouteMatch, onFinalText?: (text: string) => void) {
@@ -670,8 +677,21 @@ export function useMessagePipeline() {
    * reasoning engine (or its Phase 2 deterministic fallback when no
    * tool-calling-capable provider is configured). Pushes the user
    * message itself. `history` should be prior conversation turns for AI
-   * context. */
-  function sendMessage(text: string, history: { role: "user" | "assistant"; content: string }[], onFinalText?: (text: string) => void) {
+   * context. `source` distinguishes a typed Chat turn from a spoken Voice
+   * one — it drives the audit log's TOOL_EXECUTION source field
+   * (toolContext(), via lastSourceRef) and, for voice, mirrors the
+   * exchange into the Diagnostic Terminal as `[VOICE] User command: ...`
+   * / `[JARVIS] ...` lines, reusing the SAME dispatcher/reasoning run
+   * that already produced the chat/voice UI response — never a second
+   * command path. */
+  function sendMessage(
+    text: string,
+    history: { role: "user" | "assistant"; content: string }[],
+    onFinalText?: (text: string) => void,
+    source: "chat" | "voice" = "chat"
+  ) {
+    lastSourceRef.current = source;
+
     // Language detection runs once here, for every turn regardless of
     // source (typed chat, voice, terminal) or destination (reasoning,
     // dispatcher command, mission proposal) — the "ONE BRAIN" rule means
@@ -690,14 +710,31 @@ export function useMessagePipeline() {
     addMessage({ id: generateId("msg"), role: "user", content: text, createdAt: Date.now(), status: "complete", detectedLanguage: lang.language });
     extractAndStoreMemories(text);
 
-    const cmd = dispatchCommand(text, { navigate: (href) => router.push(href), source: "voice" });
+    if (source === "voice") {
+      pushTerminalLine({ kind: "input", text: `[VOICE] User command: ${text}` });
+    }
+    // Every branch below that produces a spoken/final reply already calls
+    // onFinalText(text) at exactly the right moment (dispatcher response,
+    // reasoning completion, tool success, spoken confirmation) — wrapping
+    // it once here, rather than pushing a terminal line from each branch
+    // individually, is what keeps this a single integration point instead
+    // of N places that could drift out of sync.
+    const finalTextHandler =
+      source === "voice"
+        ? (finalText: string) => {
+            pushTerminalLine({ kind: "output", text: `[JARVIS] ${finalText}` });
+            onFinalText?.(finalText);
+          }
+        : onFinalText;
+
+    const cmd = dispatchCommand(text, { navigate: (href) => router.push(href), source: lastSourceRef.current });
     if (cmd.handled) {
       goProcessing();
       window.setTimeout(() => {
         const cmdMsgId = generateId("msg");
         addMessage({ id: cmdMsgId, role: "assistant", content: cmd.response, createdAt: Date.now(), status: "complete" });
         goSpeaking();
-        onFinalText?.(cmd.response);
+        finalTextHandler?.(cmd.response);
         speak(cmd.response, () => goIdle(), false, cmdMsgId);
       }, 400);
       return;
@@ -711,7 +748,7 @@ export function useMessagePipeline() {
     if (pendingConfirmRef.current) {
       const { msgId } = pendingConfirmRef.current;
       if (isAffirmativeReply(text)) {
-        void confirmTool(msgId, onFinalText);
+        void confirmTool(msgId, finalTextHandler);
         return;
       }
       if (isNegativeReply(text)) {
@@ -738,16 +775,16 @@ export function useMessagePipeline() {
     }
 
     if (looksLikeDemoMissionRequest(text)) {
-      void proposeMission(text, onFinalText, true);
+      void proposeMission(text, finalTextHandler, true);
       return;
     }
 
     if (looksLikeMissionObjective(text)) {
-      void proposeMission(text, onFinalText);
+      void proposeMission(text, finalTextHandler);
       return;
     }
 
-    void runReasoningPath(text, history, onFinalText);
+    void runReasoningPath(text, history, finalTextHandler);
   }
 
   /** Deterministic decomposition of `objective` into a Mission (see

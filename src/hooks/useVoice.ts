@@ -280,7 +280,7 @@ export function useVoice() {
         .slice(-10)
         .filter((m) => m.role !== "system")
         .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
-      sendMessage(finalText, history);
+      sendMessage(finalText, history, undefined, "voice");
       setTranscript("");
       setInterim("");
     },
