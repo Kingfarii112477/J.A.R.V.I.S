@@ -50,8 +50,15 @@ export function ReasoningMonitor() {
       <Row label="TOOL CALLS" value={String(run.toolCalls.length)} />
       {run.toolCalls.length > 0 && (
         <div className="mt-0.5 flex flex-col gap-0.5 border-t border-cyan/10 pt-1">
-          {run.toolCalls.slice(-5).map((t) => (
-            <div key={t.callId} className="flex items-center justify-between gap-3">
+          {run.toolCalls.slice(-5).map((t, i) => (
+            // Composite key: Phase 4 mission tasks can run several
+            // ReasoningEngine instances concurrently under one shared
+            // sessionId (independent tasks in the same batch), so two
+            // concurrent runs' tool calls can land in this one
+            // session-scoped list — callId alone is no longer guaranteed
+            // unique here the way it was for Phase 3's one-run-per-session
+            // chat/voice path.
+            <div key={`${t.callId}-${i}`} className="flex items-center justify-between gap-3">
               <span className="truncate">{t.toolName}</span>
               <span
                 className={cn(

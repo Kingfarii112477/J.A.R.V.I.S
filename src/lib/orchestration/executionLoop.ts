@@ -48,16 +48,20 @@ export async function runExecutionLoop(
   const startedAt = mission.startedAt ?? Date.now();
 
   while (true) {
+    // Every branch below persists (onTick) BEFORE emitting its event —
+    // useMissions() and friends refetch from MissionStore the instant
+    // they hear one of these events, and each of these is a `return`
+    // (no later event will ever arrive to self-correct a stale read).
     if (flags.cancelled) {
       mission.status = "CANCELLED";
-      eventBus.emit("mission.cancelled", { missionId: mission.id });
       onTick?.();
+      eventBus.emit("mission.cancelled", { missionId: mission.id });
       return;
     }
     if (flags.paused) {
       mission.status = "PAUSED";
-      eventBus.emit("mission.paused", { missionId: mission.id });
       onTick?.();
+      eventBus.emit("mission.paused", { missionId: mission.id });
       return;
     }
 
@@ -66,15 +70,15 @@ export async function runExecutionLoop(
     if (Date.now() - startedAt > mission.budget.maxRuntimeMs) {
       mission.status = "PAUSED";
       mission.error = `Mission paused — exceeded the maximum runtime budget (${Math.round(mission.budget.maxRuntimeMs / 1000)}s).`;
-      eventBus.emit("mission.paused", { missionId: mission.id });
       onTick?.();
+      eventBus.emit("mission.paused", { missionId: mission.id });
       return;
     }
     if (mission.toolCallCount > mission.budget.maxToolCalls) {
       mission.status = "PAUSED";
       mission.error = `Mission paused — exceeded the maximum tool-call budget (${mission.budget.maxToolCalls}).`;
-      eventBus.emit("mission.paused", { missionId: mission.id });
       onTick?.();
+      eventBus.emit("mission.paused", { missionId: mission.id });
       return;
     }
 
@@ -94,13 +98,14 @@ export async function runExecutionLoop(
       mission.completedSteps = mission.tasks.filter((t) => t.status === "COMPLETED").length;
       const latencyMs = mission.completedAt - startedAt;
       if (mission.status === "COMPLETED") {
+        onTick?.();
         eventBus.emit("mission.completed", { missionId: mission.id, latencyMs, completedSteps: mission.completedSteps });
         void storeMissionMemory(mission);
       } else {
         mission.error = mission.error ?? "Every task failed or was blocked before the mission could produce a result.";
+        onTick?.();
         eventBus.emit("mission.failed", { missionId: mission.id, reason: mission.error });
       }
-      onTick?.();
       return;
     }
 
@@ -111,8 +116,8 @@ export async function runExecutionLoop(
       // validated DAG, but never spin forever if it somehow does).
       mission.status = "FAILED";
       mission.error = "Mission stalled — no task is ready to run and the mission is not complete.";
-      eventBus.emit("mission.failed", { missionId: mission.id, reason: mission.error });
       onTick?.();
+      eventBus.emit("mission.failed", { missionId: mission.id, reason: mission.error });
       return;
     }
 
@@ -120,6 +125,11 @@ export async function runExecutionLoop(
       const running = batch.find((b) => b.id === t.id);
       return running ? taskManager.markRunning(t) : t;
     });
+    // Persist before announcing — useMissions()/useMissionPendingApproval
+    // refetch from MissionStore the moment they hear mission.task.started,
+    // so the store must already reflect these tasks as RUNNING or that
+    // refresh reads the mission's still-DRAFT/previous-batch snapshot.
+    onTick?.();
     for (const task of batch) {
       eventBus.emit("mission.task.started", { missionId: mission.id, taskId: task.id, agent: task.agent });
     }
@@ -134,6 +144,12 @@ export async function runExecutionLoop(
 
       if (result.ok) {
         mission.tasks = replaceTask(mission.tasks, taskManager.markCompleted(task, result.output ?? "", result.toolCallCount));
+        // Keep completedSteps live as each task finishes — it previously
+        // only got recomputed once the whole mission reached its terminal
+        // isMissionComplete() check, so the UI's progress readout ("X/Y
+        // STEPS COMPLETE") stayed stuck at 0 for the mission's entire
+        // running duration.
+        mission.completedSteps = mission.tasks.filter((t) => t.status === "COMPLETED").length;
         eventBus.emit("mission.task.completed", { missionId: mission.id, taskId: task.id, agent: task.agent, latencyMs: result.latencyMs });
         continue;
       }
@@ -157,8 +173,8 @@ export async function runExecutionLoop(
       if (action === "PAUSE_FOR_APPROVAL") {
         mission.tasks = replaceTask(mission.tasks, taskManager.markAwaitingApproval(task));
         mission.status = "AWAITING_APPROVAL";
-        eventBus.emit("mission.task.failed", { missionId: mission.id, taskId: task.id, agent: task.agent, error: result.error ?? "Permission required.", category });
         onTick?.();
+        eventBus.emit("mission.task.failed", { missionId: mission.id, taskId: task.id, agent: task.agent, error: result.error ?? "Permission required.", category });
         return;
       }
 

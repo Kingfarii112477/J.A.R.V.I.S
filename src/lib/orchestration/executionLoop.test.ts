@@ -65,6 +65,23 @@ describe("runExecutionLoop", () => {
     expect(m.completedSteps).toBe(1);
   });
 
+  it("updates completedSteps live as each task finishes, not only once the whole mission ends", async () => {
+    const a = task("a");
+    const b = task("b", { dependencies: [a.id] });
+    const seenAfterFirstTask: number[] = [];
+    mockExecute.mockImplementation(async (m: Mission, t) => {
+      // Snapshot completedSteps as it stood going into this task's own
+      // execution — for task b (the second task), a should already be
+      // reflected as complete if the counter is being kept live.
+      if (t.id === "b") seenAfterFirstTask.push(m.completedSteps);
+      return { ok: true, taskId: t.id, output: "ok", toolCallCount: 0, iterations: 1, latencyMs: 1 };
+    });
+    const m = mission([a, b]);
+    await runExecutionLoop(m, ctx(), freshFlags());
+    expect(seenAfterFirstTask).toEqual([1]);
+    expect(m.completedSteps).toBe(2);
+  });
+
   it("runs a multi-step sequential mission in dependency order", async () => {
     const order: string[] = [];
     const a = task("a");
@@ -190,6 +207,34 @@ describe("runExecutionLoop", () => {
     await runExecutionLoop(m, ctx(), freshFlags());
     expect(m.status).toBe("PAUSED");
     expect(m.error).toMatch(/tool-call budget/i);
+  });
+
+  it("persists (onTick) before emitting mission.task.started, mission.completed, and mission.cancelled — never the reverse", async () => {
+    // useMissions() and friends refetch from MissionStore the instant they
+    // hear one of these events; if the event fires before onTick persists
+    // the new state, that refetch reads stale data with no later event to
+    // self-correct it (these are all terminal `return`s in the loop).
+    const order: string[] = [];
+    const offStarted = eventBus.on("mission.task.started", () => order.push("event:task.started"));
+    const offCompleted = eventBus.on("mission.completed", () => order.push("event:completed"));
+    mockExecute.mockResolvedValue({ ok: true, taskId: "a", output: "ok", toolCallCount: 0, iterations: 1, latencyMs: 1 });
+    const onTick = () => order.push("tick");
+    await runExecutionLoop(mission([task("a")]), ctx(), freshFlags(), onTick);
+    offStarted();
+    offCompleted();
+    // tick(dispatch) -> task.started -> tick(end of iteration 1, unconditional)
+    // -> tick(complete branch) -> completed. Every event is still preceded
+    // by its own persist — the extra tick is a harmless additional save.
+    expect(order).toEqual(["tick", "event:task.started", "tick", "tick", "event:completed"]);
+  });
+
+  it("persists (onTick) before emitting mission.cancelled", async () => {
+    const order: string[] = [];
+    const off = eventBus.on("mission.cancelled", () => order.push("event:cancelled"));
+    const onTick = () => order.push("tick");
+    await runExecutionLoop(mission([task("a")]), ctx(), { paused: false, cancelled: true }, onTick);
+    off();
+    expect(order).toEqual(["tick", "event:cancelled"]);
   });
 
   it("emits mission.completed on success and mission.failed on total failure", async () => {

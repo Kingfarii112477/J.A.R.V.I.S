@@ -75,14 +75,14 @@ export function MissionControlCenter() {
         </div>
       </HudPanel>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <HudPanel>
           <AutonomyLevelControl />
         </HudPanel>
         <AgentNetworkPanel />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,280px)_1fr]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,280px)_1fr]">
         <HudPanel className="divide-y divide-cyan/10 p-0">
           <div className="px-4 py-2.5">
             <span className="font-technical text-[10px] tracking-[0.15em] text-text-secondary">TASK QUEUE — MISSIONS</span>
@@ -95,8 +95,8 @@ export function MissionControlCenter() {
               onClick={() => setSelectedId(m.id)}
               className={cn("flex w-full flex-col gap-1 px-4 py-2.5 text-left transition-colors hover:bg-panel-strong", selected?.id === m.id && "bg-panel-strong")}
             >
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-sm text-text-primary">{m.objective}</span>
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <span className="min-w-0 truncate text-sm text-text-primary">{m.objective}</span>
                 <StatusBadge status={m.status} />
               </div>
               <span className="font-technical text-[9px] tracking-[0.05em] text-text-muted">

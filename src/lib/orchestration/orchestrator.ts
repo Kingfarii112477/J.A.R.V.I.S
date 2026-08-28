@@ -95,6 +95,10 @@ class AutonomousOrchestratorImpl {
     mission.status = "RUNNING";
     mission.startedAt = mission.startedAt ?? Date.now();
     this.live.set(missionId, mission);
+    // Persist before emitting — useMissions() refetches from
+    // MissionStore the moment it hears mission.started, so the store
+    // must already reflect RUNNING or that refresh reads stale DRAFT data.
+    await localMissionStore.updateMission(missionId, mission);
     eventBus.emit("mission.started", { missionId });
 
     await this.runToStop(mission, toolCtx, level);
@@ -114,6 +118,7 @@ class AutonomousOrchestratorImpl {
     mission.status = "RUNNING";
     mission.error = undefined;
     this.live.set(missionId, mission);
+    await localMissionStore.updateMission(missionId, mission);
     eventBus.emit("mission.resumed", { missionId });
 
     await this.runToStop(mission, toolCtx, level);
