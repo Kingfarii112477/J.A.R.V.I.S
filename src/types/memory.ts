@@ -41,9 +41,22 @@ export interface MemoryRecord {
   /** Present only when an embedding provider produced one; absent memories
    * fall back to keyword matching in search. */
   embedding?: number[];
+  /** 0..1 — how confident the source is that this content is accurate and
+   * worth retaining (e.g. a explicit "remember X" scores higher than an
+   * inferred profession guess). Distinct from `importance`, which is about
+   * how much retrieval should weight it once trusted. */
+  confidence: number;
+  /** Last time this record actually influenced a response (a search hit
+   * used as retrieved context) — distinct from `updatedAt`, which only
+   * changes on edits. Drives recency in retrieval ranking. */
+  lastUsedAt: number;
 }
 
-export type MemoryInput = Omit<MemoryRecord, "id" | "createdAt" | "updatedAt" | "embedding">;
+export type MemoryInput = Omit<MemoryRecord, "id" | "createdAt" | "updatedAt" | "embedding" | "lastUsedAt" | "confidence"> & {
+  /** Optional at write time — providers fill a source-based default when
+   * omitted, so every existing caller keeps compiling unchanged. */
+  confidence?: number;
+};
 
 export interface MemoryQuery {
   type?: MemoryType;

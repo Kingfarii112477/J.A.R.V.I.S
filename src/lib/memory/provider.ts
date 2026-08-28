@@ -1,6 +1,15 @@
-import type { MemoryInput, MemoryQuery, MemoryRecord, MemorySearchResult, MemoryStats } from "@/types/memory";
+import type { MemoryInput, MemoryQuery, MemoryRecord, MemorySearchResult, MemorySource, MemoryStats } from "@/types/memory";
 
 export type MemoryProviderId = "local" | "supabase" | "vector";
+
+/** Source-based default confidence when a caller doesn't supply one —
+ * something the user stated directly is more trustworthy than something
+ * the AI inferred or a system event logged automatically. */
+export function defaultConfidenceFor(source: MemorySource): number {
+  if (source === "user") return 0.9;
+  if (source === "system") return 0.75;
+  return 0.6;
+}
 
 /**
  * The contract every memory backend implements. LocalMemoryProvider is the

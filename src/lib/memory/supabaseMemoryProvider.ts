@@ -2,6 +2,7 @@ import "server-only";
 import type { MemoryQuery, MemoryRecord, MemorySearchResult, MemoryStats, MemoryType } from "@/types/memory";
 import type { MemoryProvider } from "./provider";
 import { MEMORY_TYPES } from "@/types/memory";
+import { defaultConfidenceFor } from "./provider";
 
 /**
  * Real Supabase-backed memory provider — talks to Supabase's PostgREST API
@@ -12,7 +13,7 @@ import { MEMORY_TYPES } from "@/types/memory";
  * Expects a table (default name `jarvis_memories`) shaped like:
  *   id text primary key, type text, content text, importance float8,
  *   created_at timestamptz, updated_at timestamptz, source text,
- *   metadata jsonb
+ *   metadata jsonb, confidence float8 default 0.7, last_used_at timestamptz
  * isAvailable() is false — and every method throws a clear "not
  * configured" error — until SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are
  * both set. Nothing here is faked or mocked; it's untested against a live
@@ -62,6 +63,8 @@ interface SupabaseRow {
   updated_at: string;
   source: MemoryRecord["source"];
   metadata: Record<string, unknown> | null;
+  confidence?: number | null;
+  last_used_at?: string | null;
 }
 
 function rowToRecord(row: SupabaseRow): MemoryRecord {
@@ -74,6 +77,10 @@ function rowToRecord(row: SupabaseRow): MemoryRecord {
     updatedAt: new Date(row.updated_at).getTime(),
     source: row.source,
     metadata: row.metadata ?? undefined,
+    // Older rows written before these columns existed fall back to a
+    // reasonable default rather than surfacing as NaN/undefined.
+    confidence: row.confidence ?? defaultConfidenceFor(row.source),
+    lastUsedAt: row.last_used_at ? new Date(row.last_used_at).getTime() : new Date(row.updated_at).getTime(),
   };
 }
 
@@ -86,6 +93,7 @@ export const supabaseMemoryProvider: MemoryProvider = {
   },
 
   async storeMemory(input) {
+    const now = new Date().toISOString();
     const [row] = (await restFetch(TABLE, {
       method: "POST",
       headers: { Prefer: "return=representation" },
@@ -95,6 +103,8 @@ export const supabaseMemoryProvider: MemoryProvider = {
         importance: input.importance,
         source: input.source,
         metadata: input.metadata ?? null,
+        confidence: input.confidence ?? defaultConfidenceFor(input.source),
+        last_used_at: now,
       }),
     })) as SupabaseRow[];
     return rowToRecord(row);
@@ -114,10 +124,25 @@ export const supabaseMemoryProvider: MemoryProvider = {
   async searchMemories(text, limit = 10) {
     const params = new URLSearchParams();
     params.set("content", `ilike.*${text}*`);
-    params.set("order", "importance.desc,updated_at.desc");
+    // No full-text relevance scoring over PostgREST here — importance and
+    // confidence approximate it until a real ranked-search function backs
+    // this table (see optimizeMemory's note on the same limitation).
+    params.set("order", "importance.desc,confidence.desc,last_used_at.desc");
     params.set("limit", String(limit));
     const rows = (await restFetch(`${TABLE}?${params.toString()}`)) as SupabaseRow[];
-    return rows.map((row) => ({ ...rowToRecord(row), score: 1 })) as MemorySearchResult[];
+    const records = rows.map((row) => ({ ...rowToRecord(row), score: 1 })) as MemorySearchResult[];
+
+    if (records.length > 0) {
+      const now = new Date().toISOString();
+      const ids = records.map((r) => `"${r.id}"`).join(",");
+      // Best-effort usage bump — a failure here must never break search
+      // results that were already computed.
+      restFetch(`${TABLE}?id=in.(${ids})`, {
+        method: "PATCH",
+        body: JSON.stringify({ last_used_at: now }),
+      }).catch(() => {});
+    }
+    return records;
   },
 
   async updateMemory(id, patch) {
@@ -126,6 +151,7 @@ export const supabaseMemoryProvider: MemoryProvider = {
     if (patch.importance !== undefined) body.importance = patch.importance;
     if (patch.metadata !== undefined) body.metadata = patch.metadata;
     if (patch.type !== undefined) body.type = patch.type;
+    if (patch.confidence !== undefined) body.confidence = patch.confidence;
 
     const rows = (await restFetch(`${TABLE}?id=eq.${encodeURIComponent(id)}`, {
       method: "PATCH",

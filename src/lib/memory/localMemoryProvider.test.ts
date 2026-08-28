@@ -18,6 +18,24 @@ describe("localMemoryProvider", () => {
     expect(record.updatedAt).toBe(record.createdAt);
   });
 
+  it("assigns a source-based default confidence when none is given", async () => {
+    const userRecord = await localMemoryProvider.storeMemory({ type: "FACT", content: "a", importance: 0.5, source: "user" });
+    const aiRecord = await localMemoryProvider.storeMemory({ type: "FACT", content: "b", importance: 0.5, source: "ai" });
+    expect(userRecord.confidence).toBeGreaterThan(aiRecord.confidence);
+    expect(userRecord.confidence).toBeGreaterThan(0);
+    expect(userRecord.confidence).toBeLessThanOrEqual(1);
+  });
+
+  it("respects an explicit confidence when provided", async () => {
+    const record = await localMemoryProvider.storeMemory({ type: "FACT", content: "a", importance: 0.5, source: "user", confidence: 0.3 });
+    expect(record.confidence).toBe(0.3);
+  });
+
+  it("sets lastUsedAt to the creation time on store", async () => {
+    const record = await localMemoryProvider.storeMemory({ type: "FACT", content: "a", importance: 0.5, source: "user" });
+    expect(record.lastUsedAt).toBe(record.createdAt);
+  });
+
   it("retrieves memories filtered by type and minImportance", async () => {
     await localMemoryProvider.storeMemory({ type: "FACT", content: "The sky is blue.", importance: 0.2, source: "system" });
     await localMemoryProvider.storeMemory({ type: "PREFERENCE", content: "Likes dark mode.", importance: 0.9, source: "user" });
@@ -39,6 +57,23 @@ describe("localMemoryProvider", () => {
     expect(results.length).toBeGreaterThan(0);
     expect(results[0].content).toContain("favorite color");
     expect(results[0].score).toBeGreaterThan(0);
+  });
+
+  it("bumps lastUsedAt on records returned by a search hit", async () => {
+    const record = await localMemoryProvider.storeMemory({ type: "FACT", content: "The user's favorite color is blue.", importance: 0.5, source: "user" });
+    await new Promise((r) => setTimeout(r, 5));
+    const results = await localMemoryProvider.searchMemories("favorite color");
+    expect(results[0].lastUsedAt).toBeGreaterThan(record.lastUsedAt);
+
+    const stored = await localMemoryProvider.retrieveMemories({});
+    expect(stored.find((r) => r.id === record.id)!.lastUsedAt).toBeGreaterThan(record.lastUsedAt);
+  });
+
+  it("ranks a more important, higher-confidence memory above a lower one at similar relevance", async () => {
+    await localMemoryProvider.storeMemory({ type: "FACT", content: "Project deadline is Friday.", importance: 0.2, source: "ai", confidence: 0.3 });
+    await localMemoryProvider.storeMemory({ type: "FACT", content: "Project deadline is Friday.", importance: 0.9, source: "user", confidence: 0.95 });
+    const results = await localMemoryProvider.searchMemories("project deadline");
+    expect(results[0].importance).toBe(0.9);
   });
 
   it("updateMemory patches content and bumps updatedAt", async () => {

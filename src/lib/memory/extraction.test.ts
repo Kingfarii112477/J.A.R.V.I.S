@@ -58,4 +58,37 @@ describe("extractMemoriesFromText", () => {
       expect(r.importance).toBeLessThanOrEqual(1);
     }
   });
+
+  it("every extracted memory has a confidence between 0 and 1", () => {
+    const results = extractMemoriesFromText("My name is Alex and I live in Austin.");
+    for (const r of results) {
+      expect(r.confidence).toBeGreaterThan(0);
+      expect(r.confidence).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("never extracts a memory containing a password", () => {
+    const results = extractMemoriesFromText("Remember that my password is hunter2fallback.");
+    expect(results).toHaveLength(0);
+  });
+
+  it("never extracts a memory containing an API key", () => {
+    const results = extractMemoriesFromText("Remember my API key is sk-abcdef1234567890.");
+    expect(results).toHaveLength(0);
+  });
+
+  it("never extracts a memory containing a credit card number", () => {
+    const results = extractMemoriesFromText("Remember that my card number is 4111111111111111.");
+    expect(results).toHaveLength(0);
+  });
+
+  it("never extracts a memory containing an opaque high-entropy token", () => {
+    const results = extractMemoriesFromText("Remember this token: aGVsbG8td29ybGQtc2VjcmV0LXRva2Vu.");
+    expect(results).toHaveLength(0);
+  });
+
+  it("still extracts an ordinary fact that mentions none of the secret patterns", () => {
+    const results = extractMemoriesFromText("Remember that my favorite color is teal.");
+    expect(results.some((r) => r.content.includes("favorite color is teal"))).toBe(true);
+  });
 });
