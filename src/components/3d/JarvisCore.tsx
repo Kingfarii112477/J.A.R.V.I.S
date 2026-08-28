@@ -6,6 +6,7 @@ import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
 import type { JarvisState } from "@/types/jarvis";
 import { coreStateColor, qualityPresets, type GraphicsQuality } from "@/config/theme";
 import { useJarvisStore } from "@/store/jarvisStore";
+import { useSpeechAmplitude } from "@/hooks/useSpeechAmplitude";
 import { NeuralCore } from "./NeuralCore";
 import { EnergyRings } from "./EnergyRings";
 import { ParticleField } from "./ParticleField";
@@ -53,6 +54,11 @@ export function JarvisCore({
   const [webglOk, setWebglOk] = useState(true);
   const reducedMotion = useJarvisStore((s) => s.settings.reducedMotion);
   const activeToolCalls = useJarvisStore((s) => s.activeToolCalls);
+  // Real playback amplitude while speaking (see useSpeechAmplitude) — 0
+  // whenever nothing is playing or the active TTS provider is the browser
+  // fallback, which exposes no analysable audio, so this only ever adds
+  // to the fixed per-state pulse below, never replaces it.
+  const speechAmplitude = useSpeechAmplitude(state === "SPEAKING");
 
   useEffect(() => {
     setWebglOk(isWebGLAvailable());
@@ -61,13 +67,21 @@ export function JarvisCore({
   const color = coreStateColor[state] ?? coreStateColor.IDLE;
   const preset = qualityPresets[quality];
   const speed = reducedMotion ? Math.min(0.25, speedByState[state] ?? 1) : speedByState[state] ?? 1;
-  const pulse = reducedMotion ? 0.02 : pulseByState[state] ?? 0.08;
+  // A tool call in flight (reasoning dispatching to the tool executor)
+  // reads as a tactical accent — the same orange used for confirmation/
+  // alert states elsewhere in the UI — plus a slightly sharper pulse, on
+  // top of whatever the current JarvisState (THINKING/PROCESSING) already
+  // contributes.
+  const executingTool = activeToolCalls > 0 && state !== "WARNING" && state !== "ERROR";
+  const amplitudeBoost = state === "SPEAKING" ? speechAmplitude * 0.22 : 0;
+  const toolBoost = executingTool ? 0.05 : 0;
+  const pulse = reducedMotion ? 0.02 : (pulseByState[state] ?? 0.08) + amplitudeBoost + toolBoost;
   // Reasoning executing more than one tool at once (parallel tool calls)
   // reads as visibly busier particle motion — capped so it stays a subtle
   // cue rather than a distracting speed-up.
   const particleSpeed = reducedMotion ? speed : speed * (1 + Math.min(activeToolCalls, 3) * 0.15);
 
-  const secondaryColor = state === "WARNING" || state === "ERROR" ? "#ff8a4c" : "#8b5cf6";
+  const secondaryColor = state === "WARNING" || state === "ERROR" ? "#ff8a4c" : executingTool ? "#ff5500" : "#8b5cf6";
 
   const dpr = useMemo<[number, number]>(() => preset.dpr, [preset]);
 

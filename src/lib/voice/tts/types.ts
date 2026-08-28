@@ -19,4 +19,11 @@ export interface TextToSpeechProvider {
   isAvailable(): boolean;
   speak(text: string, opts?: SpeakOptions): void;
   cancel(): void;
+  /** Exposes the currently-playing element read-only, so a caller (the
+   * JarvisCore audio-reactivity hook — see lib/voice/ttsAmplitude.ts) can
+   * attach an AnalyserNode to it without this provider needing to know
+   * anything about visualization. Only server-proxied providers
+   * (Azure/OpenAI/ElevenLabs) can offer this; the browser SpeechSynthesis
+   * fallback has no audio element to expose, so it's optional. */
+  currentAudioElement?(): HTMLAudioElement | null;
 }
