@@ -186,15 +186,20 @@ export function useMessagePipeline() {
       pitch: settings.voicePitch,
       volume: settings.voiceVolume / 100,
       languageHint: lastLanguageRef.current.language,
-      onEnd: () => onEnd?.(),
+      onEnd: () => {
+        eventBus.emit("voice.speakingEnded", { sessionId: sessionId.current });
+        onEnd?.();
+      },
       onError: (message, code) => {
         // A configured server TTS provider that isn't actually set up on
         // the server falls back to the browser voice once, visibly.
         if (code === "unavailable" && !isFallback && settings.ttsProvider !== "browser") {
           pushToast(`${message} Falling back to built-in speech.`, "warning");
+          eventBus.emit("voice.providerFallback", { sessionId: sessionId.current, kind: "tts", from: settings.ttsProvider, to: "browser" });
           speakOneRaw(text, onEnd, true, msgId);
           return;
         }
+        eventBus.emit("voice.speakingEnded", { sessionId: sessionId.current });
         onEnd?.();
       },
     });

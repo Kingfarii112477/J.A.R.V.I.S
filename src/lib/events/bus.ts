@@ -42,6 +42,17 @@ export interface JarvisEventPayloads {
   "voice.toolExecution": { sessionId: string; toolName: string };
   "voice.completed": { sessionId: string; latencyMs: number };
   "voice.error": { sessionId: string; message: string; code?: string };
+  /** Fires once TTS playback for a turn actually finishes (mirrors
+   * voice.speaking's start signal) — the pairing lets a listener compute
+   * real TTS/round-trip latency instead of guessing from state
+   * transitions. See useVoiceObservability.ts. */
+  "voice.speakingEnded": { sessionId: string };
+  /** A configured server STT/TTS provider turned out not to be available
+   * and this turn silently fell back to the browser implementation (see
+   * useVoice.ts and useMessagePipeline.ts's speakOneRaw) — the user
+   * already sees a toast for this; this event exists purely so the
+   * observability monitor can keep a running fallback count. */
+  "voice.providerFallback": { sessionId: string; kind: "stt" | "tts"; from: string; to: string };
   /** A CONFIRM-level tool needs authorization and the question has just
    * been spoken — useVoice.ts listens for this to resume listening for a
    * spoken yes/no, but only when microphone permission is already

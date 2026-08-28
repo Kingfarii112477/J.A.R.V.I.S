@@ -18,6 +18,7 @@ import { useAuditBridge } from "@/hooks/useAuditBridge";
 import { useMissionNotifications } from "@/hooks/useMissionNotifications";
 import { PerfMonitor } from "@/components/common/PerfMonitor";
 import { ReasoningMonitor } from "@/components/common/ReasoningMonitor";
+import { VoiceMonitor } from "@/components/common/VoiceMonitor";
 
 export function JarvisShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -56,6 +57,7 @@ export function JarvisShell({ children }: { children: ReactNode }) {
         <ToastStack />
         {debugMode && <PerfMonitor />}
         {debugMode && <ReasoningMonitor />}
+        {debugMode && <VoiceMonitor />}
         {locked && <LockScreen />}
       </div>
     </MotionConfig>

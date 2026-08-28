@@ -235,6 +235,7 @@ export function useVoice() {
         if (code === "unavailable" && !providerOverride && sttProvider !== "browser" && !usedFallbackRef.current) {
           usedFallbackRef.current = true;
           pushToast(`${message} Falling back to this browser's built-in recognizer.`, "warning");
+          eventBus.emit("voice.providerFallback", { sessionId: sessionId.current, kind: "stt", from: sttProvider, to: "browser" });
           teardown();
           void startListening("browser");
           return;
