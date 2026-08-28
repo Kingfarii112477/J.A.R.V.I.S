@@ -173,6 +173,24 @@ function nextId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${idCounter}`;
 }
 
+/** Zustand's default persist merge is a shallow Object.assign at the top
+ * level, so a persisted `settings` object from an older schema version
+ * (e.g. localStorage written before Phase 5 added voiceVolume/
+ * autoLanguageDetection/silenceTimeoutMs/wakeWordMode/etc.) would
+ * otherwise *replace* defaultSettings entirely, leaving every new field
+ * undefined for a returning user. Deep-merging settings specifically
+ * keeps partial/stale storage from ever breaking the app. Exported as a
+ * standalone function (rather than inlined in the persist() call below)
+ * so it's directly unit-testable against exactly this upgrade scenario. */
+export function mergeJarvisStore(persisted: unknown, current: JarvisStore): JarvisStore {
+  const persistedState = (persisted ?? {}) as Partial<JarvisStore>;
+  return {
+    ...current,
+    ...persistedState,
+    settings: { ...current.settings, ...(persistedState.settings ?? {}) },
+  };
+}
+
 export const useJarvisStore = create<JarvisStore>()(
   persist(
     (set, get) => ({
@@ -283,20 +301,7 @@ export const useJarvisStore = create<JarvisStore>()(
         secured: state.secured,
         tasks: state.tasks,
       }),
-      // Zustand's default merge is a shallow Object.assign at the top
-      // level, so a persisted `settings` object from an older schema
-      // (missing fields added in a later version) would otherwise
-      // *replace* defaultSettings entirely, leaving new fields undefined.
-      // Deep-merge settings specifically so partial/stale storage never
-      // breaks the app.
-      merge: (persisted, current) => {
-        const persistedState = (persisted ?? {}) as Partial<JarvisStore>;
-        return {
-          ...current,
-          ...persistedState,
-          settings: { ...current.settings, ...(persistedState.settings ?? {}) },
-        };
-      },
+      merge: mergeJarvisStore,
     }
   )
 );

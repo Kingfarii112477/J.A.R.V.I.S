@@ -90,6 +90,47 @@ describe("ReasoningEngine", () => {
     expect(messages[0].content).toContain("Just A Rather Very Intelligent System");
   });
 
+  // Phase 5 master-spec compliance: the same verbatim example sentences
+  // covered end-to-end at the detection/policy layer in
+  // lib/voice/language/specExamples.test.ts, verified here one level
+  // deeper — that the reasoning engine actually receives them unmodified
+  // as the user turn, correctly tagged with a matching directive.
+  it("sends the verbatim Roman Urdu diagnostic example unmodified, with a matching directive", async () => {
+    mockStream.mockReturnValue(decisionStream([{ type: "text", delta: "Bilkul, diagnostic chala raha hoon." }, { type: "done", finishReason: "stop" }]));
+    const engine = new ReasoningEngine();
+    await engine.run(
+      baseInput({
+        userText: "System ka complete diagnostic chalao.",
+        originalText: "System ka complete diagnostic chalao.",
+        detectedLanguage: "roman-ur",
+        mixedLanguage: false,
+      }),
+      toolCtx,
+      baseCallbacks()
+    );
+    const [messages] = mockStream.mock.calls[0];
+    expect(messages[1]).toEqual({ role: "user", content: "System ka complete diagnostic chalao." });
+    expect(messages[0].content).toMatch(/roman urdu/i);
+  });
+
+  it("sends the verbatim Hinglish memory-status query example unmodified, with a matching directive", async () => {
+    mockStream.mockReturnValue(decisionStream([{ type: "text", delta: "System ki memory 61% use ho rahi hai." }, { type: "done", finishReason: "stop" }]));
+    const engine = new ReasoningEngine();
+    await engine.run(
+      baseInput({
+        userText: "JARVIS mujhe batao system ki memory kitni use ho rahi hai.",
+        originalText: "JARVIS mujhe batao system ki memory kitni use ho rahi hai.",
+        detectedLanguage: "roman-ur",
+        mixedLanguage: true,
+      }),
+      toolCtx,
+      baseCallbacks()
+    );
+    const [messages] = mockStream.mock.calls[0];
+    expect(messages[1]).toEqual({ role: "user", content: "JARVIS mujhe batao system ki memory kitni use ho rahi hai." });
+    expect(messages[0].content).toMatch(/roman urdu/i);
+  });
+
   it("executes a single tool call and reasons over the real result to produce a final answer", async () => {
     mockStream
       .mockReturnValueOnce(

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { useJarvisStore, defaultSettings } from "./jarvisStore";
+import { useJarvisStore, defaultSettings, mergeJarvisStore } from "./jarvisStore";
 
 beforeEach(() => {
   useJarvisStore.setState({ settings: defaultSettings, state: "IDLE", previousState: "IDLE" });
@@ -30,6 +30,57 @@ describe("jarvisStore settings", () => {
     useJarvisStore.getState().updateSettings({ aiName: "FRIDAY", soundVolume: 5, reducedMotion: true });
     useJarvisStore.getState().resetSettings();
     expect(useJarvisStore.getState().settings).toEqual(defaultSettings);
+  });
+
+  it("updateSettings persists Phase 5 voice/language fields without dropping unrelated ones", () => {
+    useJarvisStore.getState().updateSettings({
+      voiceVolume: 40,
+      autoLanguageDetection: false,
+      preferredLanguage: "ur",
+      silenceTimeoutMs: 2500,
+      wakeWordMode: "push-to-talk",
+    });
+    const settings = useJarvisStore.getState().settings;
+    expect(settings.voiceVolume).toBe(40);
+    expect(settings.autoLanguageDetection).toBe(false);
+    expect(settings.preferredLanguage).toBe("ur");
+    expect(settings.silenceTimeoutMs).toBe(2500);
+    expect(settings.wakeWordMode).toBe("push-to-talk");
+    expect(settings.ttsProvider).toBe(defaultSettings.ttsProvider);
+  });
+});
+
+describe("mergeJarvisStore", () => {
+  it("fills in Phase 5 settings fields missing from an older persisted schema instead of leaving them undefined", () => {
+    const current = useJarvisStore.getState();
+    // Simulates localStorage written before Phase 5 — no voice/language
+    // fields exist on the persisted settings object at all.
+    const staleSettings = { ...defaultSettings } as Partial<typeof defaultSettings>;
+    delete staleSettings.voiceVolume;
+    delete staleSettings.autoLanguageDetection;
+    delete staleSettings.silenceTimeoutMs;
+    delete staleSettings.wakeWordMode;
+    const persisted = { settings: { ...staleSettings, aiName: "Old Name" } };
+
+    const merged = mergeJarvisStore(persisted, current);
+
+    expect(merged.settings.aiName).toBe("Old Name");
+    expect(merged.settings.voiceVolume).toBe(defaultSettings.voiceVolume);
+    expect(merged.settings.autoLanguageDetection).toBe(defaultSettings.autoLanguageDetection);
+    expect(merged.settings.silenceTimeoutMs).toBe(defaultSettings.silenceTimeoutMs);
+    expect(merged.settings.wakeWordMode).toBe(defaultSettings.wakeWordMode);
+  });
+
+  it("a persisted value overrides the default when present", () => {
+    const current = useJarvisStore.getState();
+    const merged = mergeJarvisStore({ settings: { voiceVolume: 25 } }, current);
+    expect(merged.settings.voiceVolume).toBe(25);
+  });
+
+  it("treats a missing/undefined persisted state as an empty patch rather than throwing", () => {
+    const current = useJarvisStore.getState();
+    expect(() => mergeJarvisStore(undefined, current)).not.toThrow();
+    expect(mergeJarvisStore(undefined, current).settings).toEqual(current.settings);
   });
 });
 
