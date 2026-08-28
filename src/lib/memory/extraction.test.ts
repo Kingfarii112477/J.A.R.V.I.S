@@ -91,4 +91,45 @@ describe("extractMemoriesFromText", () => {
     const results = extractMemoriesFromText("Remember that my favorite color is teal.");
     expect(results.some((r) => r.content.includes("favorite color is teal"))).toBe(true);
   });
+
+  describe("Roman Urdu / Urdu phrasing", () => {
+    it("extracts a Roman Urdu 'yaad rakho' instruction", () => {
+      const results = extractMemoriesFromText("Yaad rakho keh meeting Friday ko hai.");
+      expect(results.some((r) => r.type === "FACT" && r.content.toLowerCase().includes("meeting"))).toBe(true);
+    });
+
+    it("extracts an Urdu-script یاد رکھو instruction", () => {
+      const results = extractMemoriesFromText("یاد رکھو کہ میٹنگ جمعہ کو ہے۔");
+      expect(results.some((r) => r.type === "FACT" && r.content.includes("میٹنگ"))).toBe(true);
+    });
+
+    it("extracts a Roman Urdu name statement", () => {
+      const results = extractMemoriesFromText("Mera naam Ali hai.");
+      const name = results.find((r) => r.type === "USER_PROFILE");
+      expect(name?.content).toBe("Name: Ali.");
+    });
+
+    it("extracts an Urdu-script name statement", () => {
+      const results = extractMemoriesFromText("میرا نام علی ہے۔");
+      const name = results.find((r) => r.type === "USER_PROFILE");
+      expect(name?.content).toBe("Name: علی.");
+    });
+
+    it("extracts a Roman Urdu address preference", () => {
+      const results = extractMemoriesFromText("Mujhe Captain bulao.");
+      const address = results.find((r) => r.type === "USER_PROFILE");
+      expect(address?.content).toBe('Prefers to be addressed as "Captain".');
+    });
+
+    it("extracts an Urdu-script address preference", () => {
+      const results = extractMemoriesFromText("مجھے کیپٹن بلاؤ۔");
+      const address = results.find((r) => r.type === "USER_PROFILE");
+      expect(address?.content).toContain("کیپٹن");
+    });
+
+    it("never extracts a password stated in Roman Urdu", () => {
+      const results = extractMemoriesFromText("Yaad rakho keh mera password hunter2fallback hai.");
+      expect(results).toHaveLength(0);
+    });
+  });
 });

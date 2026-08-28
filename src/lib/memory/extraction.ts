@@ -133,6 +133,61 @@ const PATTERNS: ExtractionPattern[] = [
     confidence: 0.9,
     format: (m) => `Does not want to be addressed as "${m[1].trim()}".`,
   },
+
+  // Roman Urdu / Urdu-script equivalents for the three highest-value
+  // identity patterns above (name, address preference, explicit
+  // "remember"). These deliberately don't attempt every English pattern's
+  // Urdu equivalent — a spoken/typed "remember X" or "my name is X" in
+  // Roman Urdu or Urdu is common enough in this app's supported-language
+  // set to warrant its own pattern; a full conjunction-aware clause
+  // splitter (like English STOP above) isn't, so these just stop at
+  // sentence-ending punctuation, Latin or Urdu (۔). A real AI provider's
+  // own tool-calling already understands "remember" in any language via
+  // the memory_store tool (see reasoning/engine.ts's languageDirective) —
+  // this passive extractor is the deterministic fallback/redundant layer,
+  // same role its English patterns already play.
+  {
+    regex: /\byaad (?:rakho|rakhna|rakhiye)\s*(?:keh|ke|k)?\s*([^.!?۔\n]*?)(?=[.!?۔]|$)/i,
+    type: "FACT",
+    importance: 0.75,
+    confidence: 0.8,
+    format: (m) => m[1].trim().replace(/^./, (c) => c.toUpperCase()),
+  },
+  {
+    regex: /یاد\s*(?:رکھو|رکھنا|رکھیے)\s*(?:کہ)?\s*([^.!?۔\n]*?)(?=[.!?۔]|$)/,
+    type: "FACT",
+    importance: 0.75,
+    confidence: 0.8,
+    format: (m) => m[1].trim(),
+  },
+  {
+    regex: /\bmera naam ([a-z0-9][a-z0-9 '-]*?) hai\b/i,
+    type: "USER_PROFILE",
+    importance: 0.8,
+    confidence: 0.9,
+    format: (m) => `Name: ${m[1].trim()}.`,
+  },
+  {
+    regex: /میرا نام ([^.!?۔\n]*?) ہے/,
+    type: "USER_PROFILE",
+    importance: 0.8,
+    confidence: 0.9,
+    format: (m) => `Name: ${m[1].trim()}.`,
+  },
+  {
+    regex: /\bmujhe ([a-z0-9][a-z0-9 '-]*?) (?:bulao|kaho|kehna|pukaro)\b/i,
+    type: "USER_PROFILE",
+    importance: 0.8,
+    confidence: 0.85,
+    format: (m) => `Prefers to be addressed as "${m[1].trim()}".`,
+  },
+  {
+    regex: /مجھے ([^.!?۔\n]*?) (?:بلاؤ|بلانا|کہنا)/,
+    type: "USER_PROFILE",
+    importance: 0.8,
+    confidence: 0.85,
+    format: (m) => `Prefers to be addressed as "${m[1].trim()}".`,
+  },
 ];
 
 export function extractMemoriesFromText(text: string): ExtractedMemory[] {
