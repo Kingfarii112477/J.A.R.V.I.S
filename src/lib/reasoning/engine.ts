@@ -7,6 +7,8 @@ import { eventBus } from "@/lib/events/bus";
 import { streamReasoningEndpoint } from "./client";
 import type { ReasoningMessage, ReasoningToolCall } from "./types";
 import type { ToolExecutionContext } from "@/types/tools";
+import { languageDirective } from "@/lib/voice/language/policy";
+import type { LanguageCode } from "@/lib/voice/language/types";
 
 export interface ReasoningRequestInput {
   userText: string;
@@ -26,6 +28,21 @@ export interface ReasoningRequestInput {
    * Absent for ordinary chat/voice/terminal turns. */
   agentPreamble?: string;
   history: { role: "user" | "assistant"; content: string }[];
+
+  /** Phase 5 multilingual voice intelligence (lib/voice/language/) — all
+   * optional and additive; a caller that never sets these (existing
+   * chat/terminal/mission call sites) behaves exactly as before. */
+  /** The exact text as spoken/typed, before any normalization. */
+  originalText?: string;
+  /** Currently always equal to originalText — reserved for a future
+   * normalization step (e.g. number/date normalization) that preserves
+   * meaning without translating, per the spec's "don't translate blindly"
+   * instruction. */
+  normalizedText?: string;
+  detectedLanguage?: LanguageCode;
+  languageConfidence?: number;
+  script?: "latin" | "arabic" | "devanagari" | "mixed";
+  mixedLanguage?: boolean;
 }
 
 export interface ReasoningCallbacks {
@@ -262,7 +279,8 @@ export class ReasoningEngine {
    * alongside the JSON-schema `tools` payload sent for native function
    * calling. */
   private buildContext(input: ReasoningRequestInput) {
-    const systemPrompt = input.agentPreamble ? `${JARVIS_SYSTEM_PROMPT}\n\n${input.agentPreamble}` : JARVIS_SYSTEM_PROMPT;
+    const languageNote = input.detectedLanguage ? languageDirective(input.detectedLanguage, input.mixedLanguage ?? false) : null;
+    const systemPrompt = [JARVIS_SYSTEM_PROMPT, input.agentPreamble, languageNote].filter(Boolean).join("\n\n");
     const assembled = assembleContext({
       systemPrompt,
       screen: input.screen,

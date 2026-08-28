@@ -7,11 +7,16 @@ import { useJarvisState } from "@/hooks/useJarvisState";
 import { useAI } from "@/hooks/useAI";
 import { dispatchCommand } from "@/lib/commands/dispatcher";
 import { generateId, getSessionId } from "@/lib/utils/id";
-import { getTTSProvider, browserTTSProvider } from "@/lib/voice/tts";
+import { getTTSProvider, browserTTSProvider, SpeechQueue, extractNewCompleteSentences, remainderAfter } from "@/lib/voice/tts";
+import { formatForSpeech } from "@/lib/voice/speechFormatter";
+import { resolveLanguage } from "@/lib/voice/language/resolve";
+import { isAffirmativeReply, isNegativeReply } from "@/lib/voice/language/affirmDeny";
+import type { LanguageDetectionResult } from "@/lib/voice/language/types";
 import { eventBus, type JarvisEventName } from "@/lib/events/bus";
 import { memoryClient } from "@/lib/memory/client";
 import { extractMemoriesFromText } from "@/lib/memory/extraction";
 import { executeTool } from "@/lib/tools";
+import { toolRegistry } from "@/lib/tools/registry";
 import { routeToTool, type ToolRouteMatch } from "@/lib/tools/router";
 import { ReasoningEngine, type ReasoningRequestInput } from "@/lib/reasoning/engine";
 import { looksLikeMissionObjective, looksLikeDemoMissionRequest } from "@/lib/planning/objectiveDetection";
@@ -65,6 +70,24 @@ export function useMessagePipeline() {
    * refresh) — voice users get "Mission complete" without a blow-by-blow
    * narration of every step. */
   const missionSpokenStatusRef = useRef<Map<string, string>>(new Map());
+  /** The message id of a CONFIRM-level tool request currently awaiting a
+   * spoken yes/no (see runReasoningPath's onNeedsConfirmation below) —
+   * lets voice answer with a plain "yes"/"no" instead of tapping a
+   * button, while still resolving the exact same permission-system
+   * promise a button click would (confirmTool/cancelTool below) — the
+   * spoken word never bypasses the tool executor. */
+  const pendingConfirmRef = useRef<{ msgId: string } | null>(null);
+  /** Set once per user turn (typed or spoken) at the top of sendMessage —
+   * the single point of truth every downstream step (the reasoning
+   * engine's system prompt, and speak()'s TTS voice selection) reads from,
+   * rather than each recomputing or re-threading it through every call. */
+  const lastLanguageRef = useRef<LanguageDetectionResult>({
+    language: "en",
+    confidence: 1,
+    script: "latin",
+    mixedLanguage: false,
+    normalizedLanguage: "en",
+  });
 
   async function refreshMissionMessage(missionId: string) {
     const msgId = missionMsgIdRef.current.get(missionId);
@@ -130,23 +153,39 @@ export function useMessagePipeline() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function speak(text: string, onEnd?: () => void, isFallback = false) {
+  /** The one place raw assistant/tool text actually becomes audio for a
+   * single item — never called directly for a normal turn (see speak()
+   * below, which queues); only for a fallback-provider retry, which must
+   * bypass the queue since it's already running as part of an in-flight
+   * queue item. `msgId`, when given, also persists the speech-safe
+   * rendering onto that message (ChatMessage.speechContent) so the chat
+   * bubble's own text is never mutated — see lib/voice/speechFormatter.ts. */
+  function speakOneRaw(text: string, onEnd?: () => void, isFallback = false, msgId?: string) {
     if (!settings.autoSpeak || !settings.voiceEnabled) {
       onEnd?.();
       return;
     }
+    const speechText = formatForSpeech(text);
+    if (!speechText) {
+      onEnd?.();
+      return;
+    }
+    if (msgId) updateMessage(msgId, { speechContent: speechText });
+
     const provider = getTTSProvider(isFallback ? "browser" : settings.ttsProvider);
-    eventBus.emit("voice.speaking", { text });
-    provider.speak(text, {
+    eventBus.emit("voice.speaking", { text: speechText });
+    provider.speak(speechText, {
       rate: settings.voiceRate,
       pitch: settings.voicePitch,
+      volume: settings.voiceVolume / 100,
+      languageHint: lastLanguageRef.current.language,
       onEnd: () => onEnd?.(),
       onError: (message, code) => {
         // A configured server TTS provider that isn't actually set up on
         // the server falls back to the browser voice once, visibly.
         if (code === "unavailable" && !isFallback && settings.ttsProvider !== "browser") {
           pushToast(`${message} Falling back to built-in speech.`, "warning");
-          speak(text, onEnd, true);
+          speakOneRaw(text, onEnd, true, msgId);
           return;
         }
         onEnd?.();
@@ -154,12 +193,59 @@ export function useMessagePipeline() {
     });
   }
 
+  /** Fires once the queue has nothing left playing or pending — set by
+   * speak() right before enqueueing, since which sentence turns out to be
+   * the LAST one for a streamed turn isn't known until the stream itself
+   * ends. Assumes one active conversational turn at a time (already true
+   * throughout this pipeline — `generating` gates re-entrancy), so a
+   * later speak() call overwriting this before the queue drains is not
+   * expected in practice. */
+  const pendingDrainedCallbackRef = useRef<(() => void) | null>(null);
+  const speechQueueRef = useRef<SpeechQueue | null>(null);
+  function getSpeechQueue() {
+    if (!speechQueueRef.current) {
+      speechQueueRef.current = new SpeechQueue(
+        (item, end) => speakOneRaw(item.text, end, false, item.msgId),
+        {
+          onDrained: () => {
+            const cb = pendingDrainedCallbackRef.current;
+            pendingDrainedCallbackRef.current = null;
+            cb?.();
+          },
+        }
+      );
+    }
+    return speechQueueRef.current;
+  }
+
+  /** The public "speak this" entry point every call site uses. Enqueues
+   * through the shared SpeechQueue (see lib/voice/tts/queue.ts) rather
+   * than speaking immediately, so a sentence already queued from
+   * mid-stream (see runReasoningPath's onTextDelta below) always finishes
+   * before this one starts — never overlapping, never out of order.
+   * `onEnd`, when given, runs once the WHOLE queue drains (not just this
+   * one item) — the natural meaning of "let me know when you're done
+   * talking" for a caller that doesn't know whether earlier sentences are
+   * already queued ahead of it. */
+  function speak(text: string, onEnd?: () => void, isFallback = false, msgId?: string) {
+    if (isFallback) {
+      speakOneRaw(text, onEnd, true, msgId);
+      return;
+    }
+    if (onEnd) pendingDrainedCallbackRef.current = onEnd;
+    getSpeechQueue().enqueue({ text, msgId, languageHint: lastLanguageRef.current.language });
+  }
+
   /** Interrupts whatever is currently being spoken — cancels both the
    * configured provider and the browser fallback (harmless no-op if
-   * neither is active) so a mid-fallback interrupt still stops audio. */
+   * neither is active) so a mid-fallback interrupt still stops audio, AND
+   * drops every not-yet-spoken sentence still queued for this turn (no
+   * stale speech continuing after an interrupt). */
   function stopSpeaking() {
     getTTSProvider(settings.ttsProvider).cancel();
     browserTTSProvider.cancel();
+    speechQueueRef.current?.interrupt();
+    pendingDrainedCallbackRef.current = null;
     eventBus.emit("voice.interrupted", {});
     goIdle();
   }
@@ -225,7 +311,7 @@ export function useMessagePipeline() {
           setGenerating(false);
           if (bufferRef.current) {
             onFinalText?.(bufferRef.current);
-            speak(bufferRef.current, () => goIdle());
+            speak(bufferRef.current, () => goIdle(), false, assistantId);
           } else {
             goIdle();
           }
@@ -277,7 +363,7 @@ export function useMessagePipeline() {
       });
       goSpeaking();
       onFinalText?.(result.summary ?? "");
-      speak(result.summary ?? "", () => goIdle());
+      speak(result.summary ?? "", () => goIdle(), false, msgId);
     } else {
       updateMessage(msgId, {
         content: result.error ?? "Tool execution failed.",
@@ -305,10 +391,16 @@ export function useMessagePipeline() {
   ) {
     goThinking();
     setGenerating(true);
+    const turnStartedAt = Date.now();
+    eventBus.emit("voice.reasoning", { sessionId: sessionId.current });
 
     const callIdToMsgId = new Map<string, string>();
     let assistantMsgId: string | null = null;
     let assistantBuffer = "";
+    // How much of assistantBuffer has already been extracted as complete
+    // sentences and enqueued for speech — see onTextDelta below and
+    // lib/voice/tts/sentenceSplit.ts. Reset per turn.
+    let spokenLength = 0;
 
     const controller = new AbortController();
     reasoningAbortRef.current = controller;
@@ -333,6 +425,12 @@ export function useMessagePipeline() {
       retrievedMemories,
       activeTaskTitle: activeTaskTitle(),
       previousToolExecutions,
+      originalText: userText,
+      normalizedText: userText,
+      detectedLanguage: lastLanguageRef.current.language,
+      languageConfidence: lastLanguageRef.current.confidence,
+      script: lastLanguageRef.current.script,
+      mixedLanguage: lastLanguageRef.current.mixedLanguage,
       history,
     };
 
@@ -351,6 +449,21 @@ export function useMessagePipeline() {
         assistantBuffer += delta;
         goSpeaking();
         updateMessage(assistantMsgId, { content: assistantBuffer });
+
+        // Speak each sentence as soon as it's complete rather than
+        // waiting for the whole response — "Sentence 1 → TTS → play,
+        // while playing: Sentence 2 → generate/queue" (reduces perceived
+        // latency for longer responses; a short one-sentence reply just
+        // gets its one sentence queued here and nothing left for the
+        // "complete" branch below to add).
+        // msgId is intentionally omitted here (vs. the final speak() call
+        // below) — speakOneRaw persists speechContent onto that message,
+        // and calling it once per progressive sentence would leave only
+        // the LAST sentence stored instead of the full spoken text. The
+        // "complete" branch below sets the full speechContent once.
+        const { sentences, consumedLength } = extractNewCompleteSentences(assistantBuffer, spokenLength);
+        spokenLength = consumedLength;
+        for (const sentence of sentences) speak(sentence);
       },
       onToolCallStart: (call) => {
         const msgId = generateId("msg");
@@ -360,6 +473,7 @@ export function useMessagePipeline() {
         // little further ("multiple tools: increased particle activity").
         incrementActiveToolCalls();
         goProcessing();
+        eventBus.emit("voice.toolExecution", { sessionId: sessionId.current, toolName: call.toolName });
         addMessage({
           id: msgId,
           role: "assistant",
@@ -398,6 +512,18 @@ export function useMessagePipeline() {
         // existing orange-accented state, reused here rather than adding a
         // new one.
         goWarning();
+
+        // Speak the confirmation request and arm pendingConfirmRef so a
+        // spoken "yes"/"no" resolves this exact same promise a button
+        // click would — the tool executor stays the sole authority
+        // either way, this only decides how the answer gets in.
+        if (msgId && settings.voiceConfirmationsEnabled && settings.voiceEnabled) {
+          const tool = toolRegistry.get(call.toolName);
+          const question = `I can ${tool?.description ?? call.toolName}. Would you like me to proceed?`;
+          pendingConfirmRef.current = { msgId };
+          speak(question, () => eventBus.emit("voice.confirmationSpoken", { sessionId: sessionId.current, msgId }));
+        }
+
         return new Promise<boolean>((resolve) => {
           if (msgId) reasoningConfirmResolversRef.current.set(msgId, resolve);
           else resolve(false);
@@ -431,9 +557,18 @@ export function useMessagePipeline() {
       } else if (assistantMsgId) {
         updateMessage(assistantMsgId, { status: "complete" });
       }
+      eventBus.emit("voice.completed", { sessionId: sessionId.current, latencyMs: Date.now() - turnStartedAt });
       if (finalText) {
         onFinalText?.(finalText);
-        speak(finalText, () => goIdle());
+        if (assistantMsgId) updateMessage(assistantMsgId, { speechContent: formatForSpeech(finalText) });
+        // Only the trailing, not-yet-queued remainder needs speaking —
+        // every complete sentence already went out progressively via
+        // onTextDelta above. speak() with no text is a harmless no-op
+        // (see SpeechQueue.enqueue), but onEnd still needs to fire once
+        // the queue (which may still have earlier sentences in it)
+        // actually finishes, so it's always passed through here.
+        const remainder = remainderAfter(finalText, spokenLength);
+        speak(remainder, () => goIdle());
       } else {
         goIdle();
       }
@@ -445,10 +580,17 @@ export function useMessagePipeline() {
         assistantBuffer ||
         result.finalText ||
         "I reached the safety limit for this request before finishing — here's what I found so far.";
-      if (assistantMsgId) updateMessage(assistantMsgId, { content: note, status: "complete" });
-      else addMessage({ id: generateId("msg"), role: "assistant", content: note, createdAt: Date.now(), status: "complete" });
+      if (assistantMsgId) {
+        updateMessage(assistantMsgId, { content: note, status: "complete" });
+      } else {
+        assistantMsgId = generateId("msg");
+        addMessage({ id: assistantMsgId, role: "assistant", content: note, createdAt: Date.now(), status: "complete" });
+      }
+      eventBus.emit("voice.completed", { sessionId: sessionId.current, latencyMs: Date.now() - turnStartedAt });
       onFinalText?.(note);
-      speak(note, () => goIdle());
+      if (assistantMsgId) updateMessage(assistantMsgId, { speechContent: formatForSpeech(note) });
+      const remainder = remainderAfter(note, spokenLength);
+      speak(remainder, () => goIdle());
       return;
     }
 
@@ -462,11 +604,13 @@ export function useMessagePipeline() {
     const errorText = `AI CORE CONNECTION LOST — ${result.errorMessage ?? "Unknown reasoning error."}`;
     if (assistantMsgId) updateMessage(assistantMsgId, { status: "error", content: assistantBuffer || errorText });
     else addMessage({ id: generateId("msg"), role: "assistant", content: errorText, createdAt: Date.now(), status: "error" });
+    eventBus.emit("voice.error", { sessionId: sessionId.current, message: result.errorMessage ?? "Unknown reasoning error." });
     goError();
     setTimeout(() => goIdle(), 1600);
   }
 
   async function confirmTool(msgId: string, onFinalText?: (text: string) => void) {
+    if (pendingConfirmRef.current?.msgId === msgId) pendingConfirmRef.current = null;
     const reasoningResolve = reasoningConfirmResolversRef.current.get(msgId);
     if (reasoningResolve) {
       reasoningConfirmResolversRef.current.delete(msgId);
@@ -492,7 +636,7 @@ export function useMessagePipeline() {
       });
       goSpeaking();
       onFinalText?.(result.summary ?? "");
-      speak(result.summary ?? "", () => goIdle());
+      speak(result.summary ?? "", () => goIdle(), false, msgId);
     } else {
       updateMessage(msgId, {
         content: result.error ?? "Tool execution failed.",
@@ -504,6 +648,7 @@ export function useMessagePipeline() {
   }
 
   function cancelTool(msgId: string) {
+    if (pendingConfirmRef.current?.msgId === msgId) pendingConfirmRef.current = null;
     const reasoningResolve = reasoningConfirmResolversRef.current.get(msgId);
     if (reasoningResolve) {
       reasoningConfirmResolversRef.current.delete(msgId);
@@ -527,31 +672,66 @@ export function useMessagePipeline() {
    * message itself. `history` should be prior conversation turns for AI
    * context. */
   function sendMessage(text: string, history: { role: "user" | "assistant"; content: string }[], onFinalText?: (text: string) => void) {
-    addMessage({ id: generateId("msg"), role: "user", content: text, createdAt: Date.now(), status: "complete" });
+    // Language detection runs once here, for every turn regardless of
+    // source (typed chat, voice, terminal) or destination (reasoning,
+    // dispatcher command, mission proposal) — the "ONE BRAIN" rule means
+    // this is the single point of truth every downstream step reads from
+    // (lastLanguageRef), not a voice-only special case.
+    const lang = resolveLanguage(text, { autoLanguageDetection: settings.autoLanguageDetection, preferredLanguage: settings.preferredLanguage });
+    lastLanguageRef.current = lang;
+    eventBus.emit("voice.languageDetected", {
+      sessionId: sessionId.current,
+      language: lang.language,
+      confidence: lang.confidence,
+      script: lang.script,
+      mixedLanguage: lang.mixedLanguage,
+    });
+
+    addMessage({ id: generateId("msg"), role: "user", content: text, createdAt: Date.now(), status: "complete", detectedLanguage: lang.language });
     extractAndStoreMemories(text);
 
     const cmd = dispatchCommand(text, { navigate: (href) => router.push(href), source: "voice" });
     if (cmd.handled) {
       goProcessing();
       window.setTimeout(() => {
-        addMessage({ id: generateId("msg"), role: "assistant", content: cmd.response, createdAt: Date.now(), status: "complete" });
+        const cmdMsgId = generateId("msg");
+        addMessage({ id: cmdMsgId, role: "assistant", content: cmd.response, createdAt: Date.now(), status: "complete" });
         goSpeaking();
         onFinalText?.(cmd.response);
-        speak(cmd.response, () => goIdle());
+        speak(cmd.response, () => goIdle(), false, cmdMsgId);
       }, 400);
       return;
+    }
+
+    // A CONFIRM-level tool currently awaiting a spoken yes/no (see
+    // runReasoningPath's onNeedsConfirmation) takes priority over
+    // everything else — resolves the exact same permission-system
+    // promise a button click would (confirmTool/cancelTool), never a
+    // shortcut around the tool executor.
+    if (pendingConfirmRef.current) {
+      const { msgId } = pendingConfirmRef.current;
+      if (isAffirmativeReply(text)) {
+        void confirmTool(msgId, onFinalText);
+        return;
+      }
+      if (isNegativeReply(text)) {
+        cancelTool(msgId);
+        return;
+      }
     }
 
     // A pending (DRAFT, not yet started) mission proposal can be
     // answered by voice with a plain "proceed"/"cancel" instead of
     // clicking the card's buttons — chat can still use the buttons, but
-    // typing the same words works there too, for consistency.
-    if (pendingMissionRef.current && /^(proceed|yes|start|begin|go ahead|authorize|confirm)\b/i.test(text.trim())) {
+    // typing the same words works there too, for consistency. Recognizes
+    // the same multilingual affirm/deny phrases as the confirmation flow
+    // above (lib/voice/language/affirmDeny.ts).
+    if (pendingMissionRef.current && isAffirmativeReply(text)) {
       const { msgId, missionId } = pendingMissionRef.current;
       startMission(msgId, missionId);
       return;
     }
-    if (pendingMissionRef.current && /^(cancel|no|never ?mind|stop|abort)\b/i.test(text.trim())) {
+    if (pendingMissionRef.current && isNegativeReply(text)) {
       const { msgId, missionId } = pendingMissionRef.current;
       cancelMission(msgId, missionId);
       return;
@@ -593,7 +773,7 @@ export function useMessagePipeline() {
     addMessage({ id: msgId, role: "assistant", content: ack, createdAt: Date.now(), status: "complete", mission: toMissionSnapshot(mission) });
     goSpeaking();
     onFinalText?.(ack);
-    speak(ack, () => goIdle());
+    speak(ack, () => goIdle(), false, msgId);
   }
 
   /** Clicking START authorizes the plan (satisfying autonomy level 3's

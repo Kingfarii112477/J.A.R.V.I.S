@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getSTTProvider } from "./stt";
+import { getSTTProvider } from "./manager";
 
 describe("getSTTProvider", () => {
   it("defaults to the browser provider", () => {

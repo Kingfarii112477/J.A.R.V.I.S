@@ -25,6 +25,28 @@ export interface JarvisEventPayloads {
   "voice.listening": Record<string, never>;
   "voice.speaking": { text: string };
   "voice.interrupted": Record<string, never>;
+  /** Phase 5 additions — the full voice pipeline's observable lifecycle
+   * (see hooks/useVoice.ts and hooks/useMessagePipeline.ts). Deliberately
+   * typed like every other event here rather than an untyped global bus. */
+  "voice.started": { sessionId: string };
+  "voice.transcript": { sessionId: string; transcript: string; isFinal: boolean; confidence?: number };
+  "voice.languageDetected": {
+    sessionId: string;
+    language: import("@/lib/voice/language/types").LanguageCode;
+    confidence: number;
+    script: import("@/lib/voice/language/types").ScriptType;
+    mixedLanguage: boolean;
+  };
+  "voice.processing": { sessionId: string };
+  "voice.reasoning": { sessionId: string };
+  "voice.toolExecution": { sessionId: string; toolName: string };
+  "voice.completed": { sessionId: string; latencyMs: number };
+  "voice.error": { sessionId: string; message: string; code?: string };
+  /** A CONFIRM-level tool needs authorization and the question has just
+   * been spoken — useVoice.ts listens for this to resume listening for a
+   * spoken yes/no, but only when microphone permission is already
+   * granted (never triggers a fresh permission prompt on its own). */
+  "voice.confirmationSpoken": { sessionId: string; msgId: string };
 
   "tool.requested": { toolName: string; callId: string; params: unknown; sessionId: string };
   "tool.permission_required": { toolName: string; callId: string; sessionId: string };

@@ -65,6 +65,31 @@ describe("ReasoningEngine", () => {
     expect(result.toolCallCount).toBe(0);
   });
 
+  it("adds no language directive to the system prompt for plain English", async () => {
+    mockStream.mockReturnValue(decisionStream([{ type: "text", delta: "Hi." }, { type: "done", finishReason: "stop" }]));
+    const engine = new ReasoningEngine();
+    await engine.run(baseInput({ detectedLanguage: "en", mixedLanguage: false }), toolCtx, baseCallbacks());
+    const [messages] = mockStream.mock.calls[0];
+    expect(messages[0].content).not.toMatch(/reply naturally in that same language/i);
+  });
+
+  it("appends a response-language directive to the system prompt for Roman Urdu", async () => {
+    mockStream.mockReturnValue(decisionStream([{ type: "text", delta: "Bilkul." }, { type: "done", finishReason: "stop" }]));
+    const engine = new ReasoningEngine();
+    await engine.run(baseInput({ detectedLanguage: "roman-ur", mixedLanguage: true }), toolCtx, baseCallbacks());
+    const [messages] = mockStream.mock.calls[0];
+    expect(messages[0].content).toMatch(/reply naturally in that same language/i);
+    expect(messages[0].content).toMatch(/roman urdu/i);
+  });
+
+  it("preserves the base JARVIS_SYSTEM_PROMPT personality alongside the language directive", async () => {
+    mockStream.mockReturnValue(decisionStream([{ type: "text", delta: "OK." }, { type: "done", finishReason: "stop" }]));
+    const engine = new ReasoningEngine();
+    await engine.run(baseInput({ detectedLanguage: "ur", mixedLanguage: false }), toolCtx, baseCallbacks());
+    const [messages] = mockStream.mock.calls[0];
+    expect(messages[0].content).toContain("Just A Rather Very Intelligent System");
+  });
+
   it("executes a single tool call and reasons over the real result to produce a final answer", async () => {
     mockStream
       .mockReturnValueOnce(

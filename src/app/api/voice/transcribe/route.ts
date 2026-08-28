@@ -104,10 +104,16 @@ async function transcribeWithAssemblyAI(audio: Blob) {
   }
   const { upload_url: uploadUrl } = await uploadRes.json();
 
+  // language_detection lets AssemblyAI identify the utterance's own
+  // language (en/ur/hi/...) as one real signal — surfaced below as
+  // detectedLanguageCode/detectedLanguageConfidence. It's not a
+  // replacement for lib/voice/language/detect.ts's classifier, which also
+  // has to tell Roman Urdu and Hinglish apart from English on Latin
+  // script — something no STT language code covers.
   const transcriptRes = await fetch("https://api.assemblyai.com/v2/transcript", {
     method: "POST",
     headers: { Authorization: apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ audio_url: uploadUrl }),
+    body: JSON.stringify({ audio_url: uploadUrl, language_detection: true }),
     signal: AbortSignal.timeout(15_000),
   });
   if (!transcriptRes.ok) {
@@ -125,7 +131,12 @@ async function transcribeWithAssemblyAI(audio: Blob) {
     if (!pollRes.ok) continue;
     const poll = await pollRes.json();
     if (poll.status === "completed") {
-      return NextResponse.json({ transcript: poll.text ?? "", confidence: poll.confidence });
+      return NextResponse.json({
+        transcript: poll.text ?? "",
+        confidence: poll.confidence,
+        detectedLanguageCode: poll.language_code ?? undefined,
+        detectedLanguageConfidence: poll.language_confidence ?? undefined,
+      });
     }
     if (poll.status === "error") {
       return NextResponse.json({ error: poll.error ?? "AssemblyAI transcription failed." }, { status: 502 });

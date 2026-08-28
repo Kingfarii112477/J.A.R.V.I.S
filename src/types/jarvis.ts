@@ -44,6 +44,14 @@ export interface ChatMessage {
    * display-only snapshot refreshed via updateMessage() as mission.*
    * events arrive, exactly like toolCall above. */
   mission?: import("@/lib/orchestration/missionSnapshot").MissionSnapshot;
+  /** TTS-safe rendering of `content` (see lib/voice/speechFormatter.ts) —
+   * never shown on screen, only handed to the speech pipeline. Undefined
+   * for messages that were never spoken (tool cards, system messages). */
+  speechContent?: string;
+  /** Detected input language for this turn (see lib/voice/language/), set
+   * on the user message that triggered the response — drives both the
+   * response-language policy and the TTS voice profile selection. */
+  detectedLanguage?: import("@/lib/voice/language/types").LanguageCode;
 }
 
 export interface TelemetrySnapshot {
@@ -134,6 +142,10 @@ export interface JarvisSettings {
   autoSpeak: boolean;
   voicePitch: number;
   voiceRate: number;
+  /** TTS playback volume — distinct from soundVolume (UI click/notification
+   * effects), since a user reasonably wants J.A.R.V.I.S's spoken voice
+   * louder or quieter than the interface's own sound effects. */
+  voiceVolume: number;
   soundEffects: boolean;
   soundVolume: number;
 
@@ -154,9 +166,32 @@ export interface JarvisSettings {
 
   memoryProvider: "local" | "supabase" | "vector";
   sttProvider: "browser" | "whisper" | "assemblyai";
-  ttsProvider: "browser" | "openai" | "elevenlabs";
+  ttsProvider: "browser" | "openai" | "elevenlabs" | "azure";
   strictToolConfirmation: boolean;
   auditLoggingEnabled: boolean;
+
+  /** Phase 5 — Voice & Language. Auto-detection runs on every turn
+   * (typed or spoken) regardless of this flag; turning it off just makes
+   * the app always assume `preferredLanguage` instead of the detector's
+   * result (see lib/voice/language/). */
+  autoLanguageDetection: boolean;
+  preferredLanguage: "auto" | "en" | "ur" | "hi";
+  autoSubmitSpeech: boolean;
+  /** Milliseconds of continuous silence before auto-submitting — feeds
+   * lib/voice/vad.ts's tick-based threshold (converted from the ~33ms
+   * tick rate useVoice.ts samples at). */
+  silenceTimeoutMs: number;
+  voiceInterruptEnabled: boolean;
+  /** Whether a CONFIRM-level tool request during a voice turn is spoken
+   * aloud and can be answered by saying "yes"/"no", vs. requiring the
+   * on-screen button either way. */
+  voiceConfirmationsEnabled: boolean;
+  /** Browser mics can't be always-on by default (privacy + permission
+   * model) — "push-to-talk"/"click-to-talk" are the only two available
+   * today; "wake-word" is reserved for a future pluggable wake-word
+   * engine (see lib/voice/wakeWord.ts) and currently behaves identically
+   * to click-to-talk if selected. */
+  wakeWordMode: "push-to-talk" | "click-to-talk" | "wake-word";
 
   /** 0 Manual / 1 Assisted / 2 Supervised (default) / 3 Delegated /
    * 4 Controlled Autonomous — see lib/autonomy/autonomyLevels.ts. Governs

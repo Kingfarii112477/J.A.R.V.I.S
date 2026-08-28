@@ -1,13 +1,22 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { voiceRateLimiter, rateLimitResponse } from "@/lib/security/rateLimit";
+import { voiceProfileForLanguage, resolveAzureVoice, localeForAzureVoice } from "@/lib/voice/tts/voiceProfiles";
+import type { LanguageCode } from "@/lib/voice/language/types";
 
 export const runtime = "nodejs";
 
+const languageCodeSchema = z.enum(["en", "ur", "hi", "roman-ur", "hinglish", "mixed"]).optional();
+
 const requestSchema = z.object({
   text: z.string().min(1).max(4000),
-  provider: z.enum(["openai", "elevenlabs"]),
+  provider: z.enum(["openai", "elevenlabs", "azure"]),
+  languageHint: languageCodeSchema,
 });
+
+function azureConfigured() {
+  return Boolean(process.env.AZURE_SPEECH_KEY && process.env.AZURE_SPEECH_REGION);
+}
 
 /** Never reveals the keys themselves — only whether each is set — so the
  * Settings screen can show a real CONNECTED / NOT CONFIGURED badge. */
@@ -15,7 +24,47 @@ export async function GET() {
   return NextResponse.json({
     openai: { available: Boolean(process.env.OPENAI_API_KEY) },
     elevenlabs: { available: Boolean(process.env.ELEVENLABS_API_KEY) },
+    azure: { available: azureConfigured() },
   });
+}
+
+function escapeSsml(text: string) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+
+/** Azure AI Speech REST synthesis — https://{region}.tts.speech.microsoft.com,
+ * NOT the AZURE_SPEECH_ENDPOINT value (that's the Cognitive Services token/
+ * management endpoint pattern; the region-based TTS host is the one that
+ * actually accepts /cognitiveservices/v1 synthesis requests with the
+ * subscription key directly — verified against this project's own Azure
+ * resource before being hard-coded here). */
+async function synthesizeWithAzure(text: string, languageHint?: LanguageCode) {
+  const apiKey = process.env.AZURE_SPEECH_KEY!;
+  const region = process.env.AZURE_SPEECH_REGION!;
+  const profile = voiceProfileForLanguage(languageHint);
+  const voice = resolveAzureVoice(profile);
+  const locale = localeForAzureVoice(voice);
+
+  const ssml = `<speak version="1.0" xml:lang="${locale}"><voice name="${voice}">${escapeSsml(text)}</voice></speak>`;
+
+  const res = await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
+    method: "POST",
+    headers: {
+      "Ocp-Apim-Subscription-Key": apiKey,
+      "Content-Type": "application/ssml+xml",
+      "X-Microsoft-OutputFormat": "audio-16khz-128kbitrate-mono-mp3",
+      "User-Agent": "jarvis-os",
+    },
+    body: ssml,
+    signal: AbortSignal.timeout(30_000),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => "");
+    return NextResponse.json({ error: `Azure Speech request failed (${res.status}).`, detail: errBody.slice(0, 300) }, { status: 502 });
+  }
+  const buffer = await res.arrayBuffer();
+  return new NextResponse(buffer, { headers: { "Content-Type": "audio/mpeg" } });
 }
 
 /** Text-to-speech: returns raw audio bytes from OpenAI TTS or ElevenLabs.
@@ -36,7 +85,21 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
-  const { text, provider } = parsed.data;
+  const { text, provider, languageHint } = parsed.data;
+
+  if (provider === "azure") {
+    if (!azureConfigured()) {
+      return NextResponse.json({ unavailable: true, message: "Azure Speech is not configured on the server." }, { status: 501 });
+    }
+    try {
+      return await synthesizeWithAzure(text, languageHint);
+    } catch (err) {
+      return NextResponse.json(
+        { error: "Azure Speech request failed.", detail: err instanceof Error ? err.message : "Unknown error" },
+        { status: 502 }
+      );
+    }
+  }
 
   if (provider === "openai") {
     const apiKey = process.env.OPENAI_API_KEY;

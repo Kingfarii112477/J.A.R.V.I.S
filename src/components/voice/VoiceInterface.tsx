@@ -1,25 +1,46 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { Mic, MicOff, AlertTriangle, MessageSquare, Square } from "lucide-react";
+import { Mic, MicOff, AlertTriangle, MessageSquare, Square, X, Volume2, VolumeX } from "lucide-react";
 import { JarvisCore } from "@/components/3d/JarvisCore";
 import { HudPanel } from "@/components/hud/HudPanel";
 import { VoiceVisualizer } from "./VoiceVisualizer";
 import { useVoice } from "@/hooks/useVoice";
+import { useVoiceProviderStatus, type VoiceProviderStatus } from "@/hooks/useVoiceProviderStatus";
+import { useEventListener } from "@/hooks/useEventListener";
 import { useJarvisStore } from "@/store/jarvisStore";
 import { stateLabel, stateDescription } from "@/hooks/useJarvisState";
+import { VOICE_STATE_LABEL } from "@/lib/voice/state";
+import { LANGUAGE_LABELS } from "@/lib/voice/language/detect";
+import type { LanguageCode } from "@/lib/voice/language/types";
 import { textColor } from "@/components/common/StatusIndicator";
 import { cn } from "@/lib/utils/cn";
 
+const PROVIDER_STATUS_LABEL: Record<VoiceProviderStatus, string> = { REAL: "CONNECTED", FALLBACK: "FALLBACK", UNAVAILABLE: "UNAVAILABLE" };
+const PROVIDER_STATUS_COLOR: Record<VoiceProviderStatus, string> = { REAL: "text-success", FALLBACK: "text-warning", UNAVAILABLE: "text-danger" };
+
+/**
+ * The Voice Command Center — Phase 5's upgrade of the Phase 2 voice
+ * screen. Same file/component (app/voice/page.tsx renders this
+ * unchanged) rather than a rename, since nothing about its role in the
+ * app changed, only its capability. Every new element here (language
+ * indicator, connection status, mute/cancel controls) reads from real
+ * state — settings, the event bus, and GET /api/voice/status — never a
+ * cosmetic placeholder.
+ */
 export function VoiceInterface() {
   const router = useRouter();
   const {
     state,
+    voiceState,
     transcript,
     interim,
     confidence,
     levels,
+    permission,
+    requestingPermission,
     errorMsg,
     supported,
     startListening,
@@ -29,7 +50,12 @@ export function VoiceInterface() {
   } = useVoice();
   const quality = useJarvisStore((s) => s.settings.graphicsQuality);
   const voiceEnabled = useJarvisStore((s) => s.settings.voiceEnabled);
+  const updateSettings = useJarvisStore((s) => s.updateSettings);
   const messages = useJarvisStore((s) => s.messages);
+  const { sttStatus, ttsStatus } = useVoiceProviderStatus();
+
+  const [detectedLanguage, setDetectedLanguage] = useState<{ language: LanguageCode; confidence: number } | null>(null);
+  useEventListener("voice.languageDetected", (p) => setDetectedLanguage({ language: p.language, confidence: p.confidence }));
 
   const listening = state === "LISTENING";
   const busy = state === "THINKING" || state === "PROCESSING" || state === "SPEAKING";
@@ -78,8 +104,21 @@ export function VoiceInterface() {
       )}
 
       <HudPanel className="scanline-sweep relative flex w-full flex-col items-center overflow-hidden py-4">
+        <div className="flex w-full items-center justify-between px-2">
+          <span className="font-technical text-[10px] tracking-[0.15em] text-cyan">J.A.R.V.I.S VOICE CORE</span>
+          <button
+            type="button"
+            onClick={() => updateSettings({ voiceEnabled: !voiceEnabled })}
+            aria-label={voiceEnabled ? "Mute voice" : "Unmute voice"}
+            className="flex items-center gap-1 rounded-full border border-cyan/20 px-2 py-1 text-text-muted hover:border-cyan/40 hover:text-cyan"
+          >
+            {voiceEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
+            <span className="font-technical text-[9px] tracking-[0.08em]">{voiceEnabled ? "VOICE ON" : "MUTED"}</span>
+          </button>
+        </div>
+
         <div
-          className="relative h-[280px] w-[280px] cursor-pointer sm:h-[320px] sm:w-[320px] lg:h-[400px] lg:w-[400px]"
+          className="relative mt-2 h-[280px] w-[280px] cursor-pointer sm:h-[320px] sm:w-[320px] lg:h-[400px] lg:w-[400px]"
           onClick={handleTap}
           role="button"
           tabIndex={0}
@@ -104,7 +143,10 @@ export function VoiceInterface() {
         <VoiceVisualizer levels={levels} active={listening} />
 
         <p className={cn("font-display mt-1 text-2xl tracking-[0.2em]", textColor[state])}>{stateLabel[state]}</p>
-        <p className="font-technical mt-1 text-xs tracking-[0.1em] text-text-secondary">{stateDescription[state]}</p>
+        <p className="font-technical mt-1 text-xs tracking-[0.1em] text-text-secondary">
+          {requestingPermission ? "Requesting microphone access…" : stateDescription[state]}
+        </p>
+        <p className="font-technical mt-0.5 text-[9px] tracking-[0.15em] text-text-muted">{VOICE_STATE_LABEL[voiceState]}</p>
 
         {(transcript || interim) && (
           <div className="mt-4 w-full max-w-md rounded-xl border border-cyan/15 bg-panel-strong px-4 py-3 text-center">
@@ -112,23 +154,40 @@ export function VoiceInterface() {
               {transcript}
               <span className="text-text-muted">{interim ? ` ${interim}` : ""}</span>
             </p>
-            {confidence !== null && !listening && (
-              <p className="font-technical mt-1 text-[10px] tracking-[0.1em] text-text-muted">
-                CONFIDENCE: {Math.round(confidence * 100)}%
-              </p>
-            )}
+            <div className="mt-1.5 flex items-center justify-center gap-3">
+              {confidence !== null && !listening && (
+                <p className="font-technical text-[10px] tracking-[0.1em] text-text-muted">CONFIDENCE: {Math.round(confidence * 100)}%</p>
+              )}
+              {detectedLanguage && (
+                <p className="font-technical flex items-center gap-1 text-[10px] tracking-[0.1em] text-cyan">
+                  <span>{LANGUAGE_LABELS[detectedLanguage.language]}</span>
+                  <span className="text-text-muted">{Math.round(detectedLanguage.confidence * 100)}%</span>
+                </p>
+              )}
+            </div>
           </div>
         )}
 
-        {state === "SPEAKING" && (
-          <button
-            type="button"
-            onClick={stopSpeaking}
-            className="font-technical mt-4 flex items-center gap-1.5 rounded-full border border-warning/30 px-3 py-1.5 text-[10px] tracking-[0.1em] text-warning hover:bg-warning/10"
-          >
-            <Square size={11} /> STOP SPEAKING
-          </button>
-        )}
+        <div className="mt-4 flex items-center gap-2">
+          {state === "SPEAKING" && (
+            <button
+              type="button"
+              onClick={stopSpeaking}
+              className="font-technical flex items-center gap-1.5 rounded-full border border-warning/30 px-3 py-1.5 text-[10px] tracking-[0.1em] text-warning hover:bg-warning/10"
+            >
+              <Square size={11} /> STOP SPEAKING
+            </button>
+          )}
+          {(listening || busy) && state !== "SPEAKING" && (
+            <button
+              type="button"
+              onClick={cancel}
+              className="font-technical flex items-center gap-1.5 rounded-full border border-danger/30 px-3 py-1.5 text-[10px] tracking-[0.1em] text-danger hover:bg-danger/10"
+            >
+              <X size={11} /> CANCEL
+            </button>
+          )}
+        </div>
 
         {!listening && !busy && lastAssistant && (
           <button
@@ -155,6 +214,28 @@ export function VoiceInterface() {
         <HudPanel className="flex flex-col items-center gap-1 py-4 text-center">
           <span className="font-technical text-[10px] tracking-[0.15em] text-text-secondary">VOICE LEVEL</span>
           <span className="font-technical mt-1 text-xs tracking-[0.1em] text-cyan">{voiceLevelLabel}</span>
+        </HudPanel>
+      </div>
+
+      <div className="grid w-full grid-cols-3 gap-3">
+        <HudPanel className="flex flex-col items-center gap-1 py-4 text-center">
+          <span className="font-technical text-[10px] tracking-[0.15em] text-text-secondary">MICROPHONE</span>
+          <span
+            className={cn(
+              "font-technical mt-1 text-xs tracking-[0.1em]",
+              permission === "granted" ? "text-success" : permission === "denied" ? "text-danger" : "text-text-muted"
+            )}
+          >
+            {permission === "granted" ? "GRANTED" : permission === "denied" ? "DENIED" : "NOT REQUESTED"}
+          </span>
+        </HudPanel>
+        <HudPanel className="flex flex-col items-center gap-1 py-4 text-center">
+          <span className="font-technical text-[10px] tracking-[0.15em] text-text-secondary">STT PROVIDER</span>
+          <span className={cn("font-technical mt-1 text-xs tracking-[0.1em]", PROVIDER_STATUS_COLOR[sttStatus])}>{PROVIDER_STATUS_LABEL[sttStatus]}</span>
+        </HudPanel>
+        <HudPanel className="flex flex-col items-center gap-1 py-4 text-center">
+          <span className="font-technical text-[10px] tracking-[0.15em] text-text-secondary">TTS PROVIDER</span>
+          <span className={cn("font-technical mt-1 text-xs tracking-[0.1em]", PROVIDER_STATUS_COLOR[ttsStatus])}>{PROVIDER_STATUS_LABEL[ttsStatus]}</span>
         </HudPanel>
       </div>
     </div>

@@ -26,6 +26,7 @@ export const defaultSettings: JarvisSettings = {
   autoSpeak: true,
   voicePitch: 1,
   voiceRate: 1,
+  voiceVolume: 100,
   soundEffects: true,
   soundVolume: 60,
 
@@ -50,6 +51,14 @@ export const defaultSettings: JarvisSettings = {
   strictToolConfirmation: false,
   auditLoggingEnabled: true,
   autonomyLevel: 2,
+
+  autoLanguageDetection: true,
+  preferredLanguage: "auto",
+  autoSubmitSpeech: true,
+  silenceTimeoutMs: 1500,
+  voiceInterruptEnabled: true,
+  voiceConfirmationsEnabled: true,
+  wakeWordMode: "click-to-talk",
 };
 
 export const defaultSubsystems: Subsystem[] = [

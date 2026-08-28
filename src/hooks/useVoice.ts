@@ -1,22 +1,35 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useJarvisStore } from "@/store/jarvisStore";
 import { useJarvisState } from "@/hooks/useJarvisState";
 import { useMessagePipeline } from "@/hooks/useMessagePipeline";
 import { getSTTProvider, requestMicrophonePermission } from "@/lib/voice/stt";
 import { isSilentTick, shouldAutoStopForSilence } from "@/lib/voice/vad";
+import { deriveVoiceState } from "@/lib/voice/state";
+import { eventBus } from "@/lib/events/bus";
+import { getSessionId } from "@/lib/utils/id";
 import { useSound } from "@/hooks/useSound";
 
 const BAR_COUNT = 24;
+/** ~33ms per VAD tick (see vad.ts's own comment: 45 ticks ≈ 1.5s at this
+ * hook's ~30 ticks/sec sampling) — used to convert the user-facing
+ * settings.silenceTimeoutMs into the tick-count threshold the VAD helper
+ * actually compares against. */
+const MS_PER_VAD_TICK = 33;
 
 export function useVoice() {
   const { state, goListening, goIdle, goError, goProcessing } = useJarvisState();
   const { sendMessage, stopSpeaking } = useMessagePipeline();
   const messages = useJarvisStore((s) => s.messages);
   const sttProvider = useJarvisStore((s) => s.settings.sttProvider);
+  const silenceTimeoutMs = useJarvisStore((s) => s.settings.silenceTimeoutMs);
+  const autoSubmitSpeech = useJarvisStore((s) => s.settings.autoSubmitSpeech);
+  const voiceInterruptEnabled = useJarvisStore((s) => s.settings.voiceInterruptEnabled);
+  const activeToolCalls = useJarvisStore((s) => s.activeToolCalls);
   const pushToast = useJarvisStore((s) => s.pushToast);
   const playSound = useSound();
+  const sessionId = useRef(getSessionId());
 
   const [transcript, setTranscript] = useState("");
   const [interim, setInterim] = useState("");
@@ -25,6 +38,14 @@ export function useVoice() {
   const [permission, setPermission] = useState<"unknown" | "granted" | "denied">("unknown");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [supported, setSupported] = useState(true);
+  const [requestingPermission, setRequestingPermission] = useState(false);
+  const [justInterrupted, setJustInterrupted] = useState(false);
+  const interruptTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const voiceState = useMemo(
+    () => deriveVoiceState({ jarvisState: state, supported, requestingPermission, justInterrupted, activeToolCalls }),
+    [state, supported, requestingPermission, justInterrupted, activeToolCalls]
+  );
 
   const streamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -62,11 +83,14 @@ export function useVoice() {
       // waiting forever for a manual tap. Driven by the raw level meter
       // (not STT results) so it works the same for the streaming browser
       // recognizer and for batch providers, which don't report anything
-      // until well after the recording has already stopped.
+      // until well after the recording has already stopped. Disabled
+      // entirely when settings.autoSubmitSpeech is off — the user then
+      // always stops manually, however long they take.
       const silentNow = isSilentTick(nextLevels);
       if (!silentNow) hasSpokenRef.current = true;
       silentTicksRef.current = silentNow ? silentTicksRef.current + 1 : 0;
-      if (shouldAutoStopForSilence(silentTicksRef.current, hasSpokenRef.current)) {
+      const ticksToStop = autoSubmitSpeech ? Math.max(1, Math.round(silenceTimeoutMs / MS_PER_VAD_TICK)) : Infinity;
+      if (shouldAutoStopForSilence(silentTicksRef.current, hasSpokenRef.current, ticksToStop)) {
         silentTicksRef.current = 0;
         hasSpokenRef.current = false;
         stopAndSubmitRef.current();
@@ -112,15 +136,40 @@ export function useVoice() {
       return;
     }
 
-    const granted = await requestMicrophonePermission();
-    if (!granted) {
-      setPermission("denied");
-      setErrorMsg("Microphone access was denied. Enable it in your browser's site settings.");
+    // Barge-in: if J.A.R.V.I.S is mid-sentence when the user taps the mic,
+    // stop it immediately rather than making them wait for the response
+    // to finish — this is what makes the conversation feel real-time
+    // rather than strictly turn-based. stopSpeaking() (useMessagePipeline)
+    // already cancels both the active TTS provider and the browser
+    // fallback and returns to IDLE; the brief justInterrupted flag exists
+    // purely so the UI can show "INTERRUPTED" for a moment instead of
+    // jumping straight to LISTENING with no visible acknowledgment.
+    if (voiceInterruptEnabled && state === "SPEAKING") {
+      stopSpeaking();
+      eventBus.emit("voice.interrupted", {});
+      setJustInterrupted(true);
+      if (interruptTimeoutRef.current) clearTimeout(interruptTimeoutRef.current);
+      interruptTimeoutRef.current = setTimeout(() => setJustInterrupted(false), 400);
+    }
+
+    setRequestingPermission(true);
+    const permissionResult = await requestMicrophonePermission();
+    setRequestingPermission(false);
+    if (!permissionResult.granted) {
+      const messages: Record<typeof permissionResult.reason, string> = {
+        denied: "Microphone access was denied. Enable it in your browser's site settings.",
+        unavailable: "No microphone was found on this device. Voice input is unavailable — text chat still works.",
+        error: "Could not access the microphone. Voice input is temporarily unavailable.",
+      };
+      setPermission(permissionResult.reason === "denied" ? "denied" : "unknown");
+      setErrorMsg(messages[permissionResult.reason]);
+      eventBus.emit("voice.error", { sessionId: sessionId.current, message: messages[permissionResult.reason], code: permissionResult.reason });
       goError();
       window.setTimeout(() => goIdle(), 1800);
       return;
     }
     setPermission("granted");
+    eventBus.emit("voice.started", { sessionId: sessionId.current });
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -159,6 +208,7 @@ export function useVoice() {
       onResult: ({ transcript: t, isFinal, confidence: c }) => {
         hasSpokenRef.current = true;
         if (typeof c === "number") setConfidence(c);
+        eventBus.emit("voice.transcript", { sessionId: sessionId.current, transcript: t, isFinal, confidence: c });
         if (!isFinal) {
           setInterim(t);
           return;
@@ -190,6 +240,7 @@ export function useVoice() {
           return;
         }
         setErrorMsg(message);
+        eventBus.emit("voice.error", { sessionId: sessionId.current, message, code });
         teardown();
         goError();
         window.setTimeout(() => goIdle(), 1800);
@@ -211,7 +262,7 @@ export function useVoice() {
     // it's intentionally left out of this dependency list — including it
     // would just make `startListening` churn identity every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goError, goIdle, goListening, playSound, pushToast, sttProvider, teardown, teardownVisualization]);
+  }, [goError, goIdle, goListening, playSound, pushToast, sttProvider, teardown, teardownVisualization, voiceInterruptEnabled, state, stopSpeaking]);
 
   /** Sends transcribed text through the shared message pipeline (dispatcher
    * → AI fallback → TTS), or returns to idle if there's nothing to send.
@@ -250,6 +301,7 @@ export function useVoice() {
     if (provider.id !== "browser") {
       teardownVisualization();
       goProcessing();
+      eventBus.emit("voice.processing", { sessionId: sessionId.current });
       provider.stop();
       return;
     }
@@ -276,13 +328,33 @@ export function useVoice() {
 
   useEffect(() => teardown, [teardown]);
 
+  useEffect(
+    () => () => {
+      if (interruptTimeoutRef.current) clearTimeout(interruptTimeoutRef.current);
+    },
+    []
+  );
+
+  // Resume listening automatically once a spoken confirmation question
+  // finishes — but only when mic permission is already granted this
+  // session. Never requests a fresh permission prompt on its own; that
+  // always requires an explicit user gesture (see requestMicrophonePermission
+  // above, only ever called from startListening()).
+  useEffect(() => {
+    return eventBus.on("voice.confirmationSpoken", () => {
+      if (permission === "granted") void startListening();
+    });
+  }, [permission, startListening]);
+
   return {
     state,
+    voiceState,
     transcript,
     interim,
     confidence,
     levels,
     permission,
+    requestingPermission,
     errorMsg,
     supported,
     startListening,
