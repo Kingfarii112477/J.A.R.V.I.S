@@ -51,6 +51,42 @@ describe("assembleContext", () => {
     expect(messages[0].content).toContain("28°C");
   });
 
+  it("includes a plain-language tool capability summary when provided", () => {
+    const messages = assembleContext({
+      ...base,
+      toolDefinitions: [{ name: "system_status", description: "Check subsystem health." }],
+    });
+    expect(messages[0].content).toContain("system_status");
+    expect(messages[0].content).toContain("Check subsystem health.");
+  });
+
+  it("omits the tool capability section when no definitions are given", () => {
+    const messages = assembleContext(base);
+    expect(messages[0].content).not.toContain("Tools available to you");
+  });
+
+  it("includes previous tool executions from earlier turns in this session", () => {
+    const messages = assembleContext({
+      ...base,
+      previousToolExecutions: [{ toolName: "weather", summary: "28°C in Paris", ok: true }],
+    });
+    expect(messages[0].content).toContain("weather");
+    expect(messages[0].content).toContain("28°C in Paris");
+    expect(messages[0].content).toContain("succeeded");
+  });
+
+  it("caps previous tool executions to the most recent five", () => {
+    const previousToolExecutions = Array.from({ length: 8 }, (_, i) => ({
+      toolName: `tool${i}`,
+      summary: `result ${i}`,
+      ok: true,
+    }));
+    const messages = assembleContext({ ...base, previousToolExecutions });
+    expect(messages[0].content).not.toContain("tool0:");
+    expect(messages[0].content).not.toContain("tool2:");
+    expect(messages[0].content).toContain("tool7:");
+  });
+
   it("preserves full history when it fits comfortably under budget", () => {
     const history = [
       { role: "user" as const, content: "hello" },

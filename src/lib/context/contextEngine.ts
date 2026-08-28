@@ -5,6 +5,17 @@ export interface RetrievedMemoryContext {
   type: string;
 }
 
+export interface ToolDefinitionSummary {
+  name: string;
+  description: string;
+}
+
+export interface PreviousToolExecution {
+  toolName: string;
+  summary: string;
+  ok: boolean;
+}
+
 export interface ContextEngineInput {
   systemPrompt: string;
   screen: string;
@@ -15,6 +26,18 @@ export interface ContextEngineInput {
   retrievedMemories: RetrievedMemoryContext[];
   activeTaskTitle?: string;
   toolResult?: { toolName: string; summary: string };
+  /** Concise capability narrative — separate from the actual JSON-schema
+   * `tools` payload sent alongside the request for native function
+   * calling. Gives the model (and the deterministic-router fallback path,
+   * which never sees that JSON schema) a plain-language sense of what's
+   * available without repeating full parameter definitions. */
+  toolDefinitions?: ToolDefinitionSummary[];
+  /** Recent tool executions from earlier turns in this session — distinct
+   * from `toolResult` (the single most-recent result the Phase 2
+   * deterministic dispatcher already threads through). Gives the model
+   * continuity across turns without replaying the full tool-call/result
+   * message history. Capped and truncated same as everything else here. */
+  previousToolExecutions?: PreviousToolExecution[];
   history: AIMessage[];
 }
 
@@ -55,6 +78,22 @@ export function assembleContext(input: ContextEngineInput): AIMessage[] {
     parts.push(
       `A tool just ran on the user's behalf — ${input.toolResult.toolName}: ${input.toolResult.summary}. Incorporate this result naturally; don't re-run the tool.`
     );
+  }
+
+  if (input.previousToolExecutions && input.previousToolExecutions.length > 0) {
+    const recent = input.previousToolExecutions.slice(-5);
+    const lines = recent
+      .map((t) => `- ${t.toolName}: ${t.summary.slice(0, 200)} (${t.ok ? "succeeded" : "failed"})`)
+      .join("\n");
+    parts.push(`Tools you already ran earlier in this session (do not re-run them for the same purpose unless asked):\n${lines}`);
+  }
+
+  if (input.toolDefinitions && input.toolDefinitions.length > 0) {
+    const lines = input.toolDefinitions
+      .slice(0, 20)
+      .map((t) => `- ${t.name}: ${t.description.slice(0, 150)}`)
+      .join("\n");
+    parts.push(`Tools available to you (invoke them only when genuinely needed, never narrate this list to the user):\n${lines}`);
   }
 
   if (input.retrievedMemories.length > 0) {

@@ -1,5 +1,5 @@
 import { JARVIS_SYSTEM_PROMPT } from "@/config/ai";
-import { assembleContext, type RetrievedMemoryContext } from "@/lib/context/contextEngine";
+import { assembleContext, type RetrievedMemoryContext, type PreviousToolExecution } from "@/lib/context/contextEngine";
 import { toolsToJsonSchema, type ToolSchemaForModel } from "@/lib/tools/schema";
 import { executeTool, type ExecuteToolResult } from "@/lib/tools";
 import { eventBus } from "@/lib/events/bus";
@@ -16,6 +16,10 @@ export interface ReasoningRequestInput {
   verbosity: "concise" | "balanced" | "detailed";
   retrievedMemories: RetrievedMemoryContext[];
   activeTaskTitle?: string;
+  /** Recent tool executions from earlier turns in this session (not this
+   * run) — gives the model continuity without replaying full message
+   * history. Optional and capped by the context engine. */
+  previousToolExecutions?: PreviousToolExecution[];
   history: { role: "user" | "assistant"; content: string }[];
 }
 
@@ -133,8 +137,8 @@ export class ReasoningEngine {
     if (normalized === null) {
       return { usedReasoning: true, finalText: "", iterations: 0, toolCallCount: 0, stoppedReason: "error", errorMessage: "Empty request." };
     }
-    this.buildContext(normalized);
     this.tools = toolsToJsonSchema();
+    this.buildContext(normalized);
     this.startedAt = Date.now();
     this.iteration = 0;
     this.toolCallCount = 0;
@@ -216,7 +220,10 @@ export class ReasoningEngine {
 
   /** Step 2: assemble the system prompt + trimmed history via the
    * existing (Phase 2) context engine, then seed the working message
-   * list this run will append to. */
+   * list this run will append to. Called after `this.tools` is populated
+   * so the system prompt can carry a plain-language capability summary
+   * alongside the JSON-schema `tools` payload sent for native function
+   * calling. */
   private buildContext(input: ReasoningRequestInput) {
     const assembled = assembleContext({
       systemPrompt: JARVIS_SYSTEM_PROMPT,
@@ -227,6 +234,8 @@ export class ReasoningEngine {
       verbosity: input.verbosity,
       retrievedMemories: input.retrievedMemories,
       activeTaskTitle: input.activeTaskTitle,
+      previousToolExecutions: input.previousToolExecutions,
+      toolDefinitions: this.tools.map((t) => ({ name: t.name, description: t.description })),
       history: input.history,
     });
     const [system, ...history] = assembled;

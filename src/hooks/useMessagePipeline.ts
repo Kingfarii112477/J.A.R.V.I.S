@@ -233,6 +233,15 @@ export function useMessagePipeline() {
     reasoningAbortRef.current = controller;
 
     const retrievedMemories = await gatherRetrievedMemories(userText);
+    const previousToolExecutions = useJarvisStore
+      .getState()
+      .messages.filter((m) => m.toolCall && (m.toolCall.status === "success" || m.toolCall.status === "error"))
+      .slice(-5)
+      .map((m) => ({
+        toolName: m.toolCall!.toolName,
+        summary: m.toolCall!.summary ?? "",
+        ok: m.toolCall!.status === "success",
+      }));
     const input: ReasoningRequestInput = {
       userText,
       sessionId: sessionId.current,
@@ -242,6 +251,7 @@ export function useMessagePipeline() {
       verbosity: settings.aiPersonalityVerbosity,
       retrievedMemories,
       activeTaskTitle: activeTaskTitle(),
+      previousToolExecutions,
       history,
     };
 
