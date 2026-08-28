@@ -56,12 +56,39 @@ export function useMessagePipeline() {
    * which has no direct UI callback hooks the way ReasoningEngine does)
    * can find and refresh the right message. */
   const missionMsgIdRef = useRef<Map<string, string>>(new Map());
+  /** The most recently proposed DRAFT mission's chat message id — lets
+   * voice (which has no button to click) start/cancel it by saying
+   * "proceed"/"cancel" instead, per the spec's voice mission example. */
+  const pendingMissionRef = useRef<{ msgId: string; missionId: string } | null>(null);
+  /** Last status spoken for a mission, so completion/failure/pause is
+   * announced exactly once (not on every intermediate task-progress
+   * refresh) — voice users get "Mission complete" without a blow-by-blow
+   * narration of every step. */
+  const missionSpokenStatusRef = useRef<Map<string, string>>(new Map());
 
   async function refreshMissionMessage(missionId: string) {
     const msgId = missionMsgIdRef.current.get(missionId);
     if (!msgId) return;
     const mission = await orchestrator.getMission(missionId);
-    if (mission) updateMessage(msgId, { mission: toMissionSnapshot(mission) });
+    if (!mission) return;
+    updateMessage(msgId, { mission: toMissionSnapshot(mission) });
+
+    const spokenBefore = missionSpokenStatusRef.current.get(missionId);
+    const terminal = mission.status === "COMPLETED" || mission.status === "FAILED" || mission.status === "PAUSED" || mission.status === "CANCELLED";
+    if (terminal && spokenBefore !== mission.status) {
+      missionSpokenStatusRef.current.set(missionId, mission.status);
+      const line =
+        mission.status === "COMPLETED"
+          ? mission.synthesis
+            ? `Mission complete. ${mission.synthesis}`
+            : "Mission complete."
+          : mission.status === "FAILED"
+            ? `Mission failed. ${mission.error ?? ""}`.trim()
+            : mission.status === "PAUSED"
+              ? `Mission paused. ${mission.error ?? ""}`.trim()
+              : "Mission cancelled.";
+      speak(line, () => goIdle());
+    }
   }
 
   // One subscription set for every mission-scoped event that should
@@ -515,8 +542,23 @@ export function useMessagePipeline() {
       return;
     }
 
+    // A pending (DRAFT, not yet started) mission proposal can be
+    // answered by voice with a plain "proceed"/"cancel" instead of
+    // clicking the card's buttons — chat can still use the buttons, but
+    // typing the same words works there too, for consistency.
+    if (pendingMissionRef.current && /^(proceed|yes|start|begin|go ahead|authorize|confirm)\b/i.test(text.trim())) {
+      const { msgId, missionId } = pendingMissionRef.current;
+      startMission(msgId, missionId);
+      return;
+    }
+    if (pendingMissionRef.current && /^(cancel|no|never ?mind|stop|abort)\b/i.test(text.trim())) {
+      const { msgId, missionId } = pendingMissionRef.current;
+      cancelMission(msgId, missionId);
+      return;
+    }
+
     if (looksLikeMissionObjective(text)) {
-      void proposeMission(text);
+      void proposeMission(text, onFinalText);
       return;
     }
 
@@ -526,14 +568,25 @@ export function useMessagePipeline() {
   /** Deterministic decomposition of `objective` into a Mission (see
    * lib/planning/planner.ts), rendered as a MissionCard the user must
    * explicitly START — never launched automatically. Mirrors the spec's
-   * "MISSION PROPOSED ... [START MISSION]" flow. */
-  async function proposeMission(objective: string) {
+   * "MISSION PROPOSED ... [START MISSION]" flow. Also speaks a short
+   * acknowledgment (muted automatically when voice/autoSpeak is off, via
+   * the existing speak() gating) so a voice-only session hears it too,
+   * per "Certainly, Sir. I have prepared a six-step research mission." */
+  async function proposeMission(objective: string, onFinalText?: (text: string) => void) {
     goProcessing();
     const mission = await orchestrator.createMission(objective, sessionId.current, "chat");
     const msgId = generateId("msg");
     missionMsgIdRef.current.set(mission.id, msgId);
-    addMessage({ id: msgId, role: "assistant", content: "", createdAt: Date.now(), status: "complete", mission: toMissionSnapshot(mission) });
-    goIdle();
+    pendingMissionRef.current = { msgId, missionId: mission.id };
+
+    const ack =
+      mission.status === "FAILED"
+        ? `I couldn't build a valid plan for that: ${mission.error ?? "the plan failed validation."}`
+        : `I've prepared a ${mission.tasks.length}-step mission for "${objective}". Say "proceed" to begin, or "cancel" to discard it.`;
+    addMessage({ id: msgId, role: "assistant", content: ack, createdAt: Date.now(), status: "complete", mission: toMissionSnapshot(mission) });
+    goSpeaking();
+    onFinalText?.(ack);
+    speak(ack, () => goIdle());
   }
 
   /** Clicking START authorizes the plan (satisfying autonomy level 3's
@@ -542,8 +595,10 @@ export function useMessagePipeline() {
    * mission.* and agent.* event subscription above, not this promise. */
   function startMission(msgId: string, missionId: string) {
     missionMsgIdRef.current.set(missionId, msgId);
+    if (pendingMissionRef.current?.missionId === missionId) pendingMissionRef.current = null;
     orchestrator.authorizePlan(missionId);
     goProcessing();
+    speak("Mission authorized. Beginning execution.");
     orchestrator
       .startMission(missionId, toolContext())
       .then(() => refreshMissionMessage(missionId))
@@ -565,6 +620,7 @@ export function useMessagePipeline() {
 
   function cancelMission(msgId: string, missionId: string) {
     missionMsgIdRef.current.set(missionId, msgId);
+    if (pendingMissionRef.current?.missionId === missionId) pendingMissionRef.current = null;
     void orchestrator.cancelMission(missionId).then(() => refreshMissionMessage(missionId));
   }
 
