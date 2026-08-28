@@ -90,6 +90,37 @@ describe("ReasoningEngine", () => {
     expect(result.toolCallCount).toBe(1);
   });
 
+  it("reasons over real research results, injecting their full source metadata back into the model's context", async () => {
+    mockStream
+      .mockReturnValueOnce(
+        decisionStream([
+          { type: "tool_call", callId: "c1", toolName: "web_search", args: { query: "jarvis ai" }, argsRaw: "{}" },
+          { type: "done", finishReason: "tool_calls" },
+        ])
+      )
+      .mockReturnValueOnce(decisionStream([{ type: "text", delta: "Per Wikipedia, J.A.R.V.I.S. is a fictional AI." }, { type: "done", finishReason: "stop" }]));
+    mockExecuteTool.mockResolvedValue({
+      ok: true,
+      callId: "c1",
+      toolName: "web_search",
+      result: { available: true, results: [{ title: "J.A.R.V.I.S. (Wikipedia)", url: "https://en.wikipedia.org/wiki/J.A.R.V.I.S.", snippet: "A fictional AI." }] },
+      summary: 'Found 1 result: "J.A.R.V.I.S. (Wikipedia)" (https://en.wikipedia.org/wiki/J.A.R.V.I.S.)',
+    });
+
+    const engine = new ReasoningEngine();
+    const result = await engine.run(baseInput({ userText: "who is jarvis" }), toolCtx, baseCallbacks());
+
+    // The second model turn must have received the tool's full source
+    // metadata (not just a bare success flag) — otherwise the model has
+    // nothing real to summarize and would have to fabricate an answer.
+    const secondCallMessages = mockStream.mock.calls[1][0] as { role: string; content?: string }[];
+    const toolMessage = secondCallMessages.find((m) => m.role === "tool");
+    expect(toolMessage?.content).toContain("https://en.wikipedia.org/wiki/J.A.R.V.I.S.");
+    expect(toolMessage?.content).toContain("A fictional AI.");
+    expect(result.stoppedReason).toBe("complete");
+    expect(result.finalText).toBe("Per Wikipedia, J.A.R.V.I.S. is a fictional AI.");
+  });
+
   it("chains sequential tool calls across iterations (second call informed by the first result)", async () => {
     mockStream
       .mockReturnValueOnce(decisionStream([{ type: "tool_call", callId: "c1", toolName: "system_status", args: {}, argsRaw: "{}" }, { type: "done", finishReason: "tool_calls" }]))

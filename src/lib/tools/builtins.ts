@@ -111,21 +111,31 @@ const openScreenTool: ToolDefinition<{ screen: z.infer<typeof screenEnum> }, { s
   },
 };
 
-const webSearchTool: ToolDefinition<{ query: string }, { available: boolean; count: number }> = {
+const webSearchTool: ToolDefinition<
+  { query: string },
+  { available: boolean; results: { title: string; url: string; snippet: string }[] }
+> = {
   name: "web_search",
-  description: "Search the web for current information via a configured research provider.",
+  description: "Search the web for current information via a configured research provider. Returns real source titles/URLs/snippets — only summarize what these results actually say, and cite the source URL for any claim.",
   parameters: z.object({ query: z.string().min(1).max(500) }),
   permission: "SAFE",
   requiresConfirmation: false,
   async execute(args) {
     const outcome = await searchWeb(args.query);
-    if (!outcome.available) return { available: false, count: 0 };
+    if (!outcome.available) return { available: false, results: [] };
     if (outcome.error) throw new Error(outcome.error);
-    return { available: true, count: outcome.results.length };
+    // Preserve source metadata (title/url/snippet) so the model reasons
+    // over real content instead of a bare count — capped to keep the
+    // tool result within a sane context budget.
+    return {
+      available: true,
+      results: outcome.results.slice(0, 5).map((r) => ({ title: r.title, url: r.url, snippet: r.snippet })),
+    };
   },
   formatResult(r) {
     if (!r.available) return "No research provider is configured — web search is unavailable.";
-    return `Found ${r.count} web result${r.count === 1 ? "" : "s"}.`;
+    if (r.results.length === 0) return "No results found.";
+    return `Found ${r.results.length} result${r.results.length === 1 ? "" : "s"}: ${r.results.map((res) => `"${res.title}" (${res.url})`).join(", ")}`;
   },
 };
 

@@ -80,3 +80,39 @@ describe("n8n_workflow tool", () => {
     expect(tool?.riskNote).toMatch(/external automation/i);
   });
 });
+
+describe("web_search tool", () => {
+  it("is registered as SAFE (never requires confirmation)", () => {
+    expect(toolRegistry.get("web_search")?.permission).toBe("SAFE");
+  });
+
+  it("preserves source title/url/snippet in the result the model reasons over, not just a count", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        status: 200,
+        ok: true,
+        json: async () => ({
+          results: [
+            { title: "J.A.R.V.I.S on Wikipedia", url: "https://en.wikipedia.org/wiki/J.A.R.V.I.S.", snippet: "A fictional AI." },
+          ],
+        }),
+      })
+    );
+    const result = await executeTool("web_search", { query: "jarvis" }, ctx, false);
+    expect(result.ok).toBe(true);
+    expect(result.result).toEqual({
+      available: true,
+      results: [{ title: "J.A.R.V.I.S on Wikipedia", url: "https://en.wikipedia.org/wiki/J.A.R.V.I.S.", snippet: "A fictional AI." }],
+    });
+    expect(result.summary).toContain("https://en.wikipedia.org/wiki/J.A.R.V.I.S.");
+  });
+
+  it("reports unavailable honestly instead of fabricating results when no research provider is configured", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 503, ok: false, json: async () => ({ unavailable: true }) }));
+    const result = await executeTool("web_search", { query: "jarvis" }, ctx, false);
+    expect(result.ok).toBe(true);
+    expect(result.result).toEqual({ available: false, results: [] });
+    expect(result.summary).toMatch(/no research provider is configured/i);
+  });
+});
