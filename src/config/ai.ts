@@ -32,6 +32,14 @@ export const AI_PROVIDERS: AIProviderMeta[] = [
 
 export const DEFAULT_MODELS: Partial<Record<AIProviderId, string>> = {
   openrouter: "anthropic/claude-sonnet-5",
-  groq: "llama-3.3-70b-versatile",
+  // llama-3.3-70b-versatile was Groq's default until it was deprecated and
+  // dropped from Groq's active model catalog — a live deployment configured
+  // with only GROQ_API_KEY started failing every chat/reasoning turn with a
+  // 401 ("Missing Authentication header") despite a valid key, because
+  // requesting a model the account no longer has access to fails before
+  // auth is even fully evaluated. openai/gpt-oss-120b is Groq's current
+  // general-purpose text model with confirmed tool-calling support
+  // (verified directly against the Groq API, not assumed).
+  groq: "openai/gpt-oss-120b",
   "openai-compatible": "gpt-4o-mini",
 };

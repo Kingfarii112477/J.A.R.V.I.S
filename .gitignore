@@ -17,6 +17,10 @@
 /.next/
 /out/
 
+# netlify CLI local build/deploy state
+/.netlify/
+deploy-*.zip
+
 # production
 /build
 
