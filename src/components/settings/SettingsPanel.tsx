@@ -213,14 +213,21 @@ export function SettingsPanel() {
               <SettingRow label="Voice Confirmations" description="Speak CONFIRM-level tool requests aloud and accept a spoken yes/no">
                 <ToggleSwitch checked={settings.voiceConfirmationsEnabled} onChange={(v) => set("voiceConfirmationsEnabled", v)} label="Voice confirmations" />
               </SettingRow>
-              <SettingRow label="Activation Mode" description="Browsers require an explicit tap before microphone access — always-on listening isn't offered">
+              <SettingRow
+                label="Activation Mode"
+                description={
+                  settings.wakeWordMode === "wake-word"
+                    ? 'Listens for "Jarvis" while this screen is open and the mic is already granted — foreground only, never a background service'
+                    : "An explicit tap/press starts the mic — always-on listening isn't offered"
+                }
+              >
                 <Select
                   value={settings.wakeWordMode}
                   onChange={(v) => set("wakeWordMode", v as JarvisSettings["wakeWordMode"])}
                   options={[
                     { value: "click-to-talk", label: "Click to Talk" },
                     { value: "push-to-talk", label: "Push to Talk" },
-                    { value: "wake-word", label: "Wake Word (reserved — behaves as Click to Talk)" },
+                    { value: "wake-word", label: 'Wake Word ("Jarvis") — foreground only' },
                   ]}
                 />
               </SettingRow>

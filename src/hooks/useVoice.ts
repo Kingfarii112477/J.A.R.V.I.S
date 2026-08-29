@@ -7,6 +7,7 @@ import { useMessagePipeline } from "@/hooks/useMessagePipeline";
 import { getSTTProvider, requestMicrophonePermission } from "@/lib/voice/stt";
 import { isSilentTick, shouldAutoStopForSilence } from "@/lib/voice/vad";
 import { deriveVoiceState } from "@/lib/voice/state";
+import { getWakeWordProvider } from "@/lib/voice/wakeWord";
 import { eventBus } from "@/lib/events/bus";
 import { getSessionId } from "@/lib/utils/id";
 import { useSound } from "@/hooks/useSound";
@@ -26,6 +27,7 @@ export function useVoice() {
   const silenceTimeoutMs = useJarvisStore((s) => s.settings.silenceTimeoutMs);
   const autoSubmitSpeech = useJarvisStore((s) => s.settings.autoSubmitSpeech);
   const voiceInterruptEnabled = useJarvisStore((s) => s.settings.voiceInterruptEnabled);
+  const wakeWordMode = useJarvisStore((s) => s.settings.wakeWordMode);
   const activeToolCalls = useJarvisStore((s) => s.activeToolCalls);
   const pushToast = useJarvisStore((s) => s.pushToast);
   const playSound = useSound();
@@ -346,6 +348,36 @@ export function useVoice() {
       if (permission === "granted") void startListening();
     });
   }, [permission, startListening]);
+
+  // Foreground wake-word listening (see lib/voice/wakeWord.ts for exactly
+  // what this is/isn't — foreground-only, no cloud audio streaming, never
+  // described as always-listening). Only runs when the user has
+  // explicitly chosen Wake Word mode in Settings AND mic permission is
+  // already granted from an earlier explicit gesture — this effect never
+  // triggers a fresh permission prompt itself. Stops the instant the app
+  // leaves IDLE (a real capture/response turn takes over the mic) and
+  // restarts once back to IDLE, so the two never compete for the
+  // microphone.
+  useEffect(() => {
+    const provider = getWakeWordProvider();
+    if (wakeWordMode !== "wake-word" || permission !== "granted" || state !== "IDLE") {
+      provider.stop();
+      return;
+    }
+    provider.start(
+      () => {
+        eventBus.emit("voice.wakeWordDetected", { sessionId: sessionId.current });
+        void startListening();
+      },
+      (message) => {
+        // A passive background feature failing shouldn't interrupt the
+        // user with an error toast the way a failed manual mic tap
+        // would — logged for diagnosis, nothing more.
+        console.warn("[wakeWord]", message);
+      }
+    );
+    return () => provider.stop();
+  }, [wakeWordMode, permission, state, startListening]);
 
   return {
     state,

@@ -58,6 +58,9 @@ export interface JarvisEventPayloads {
    * spoken yes/no, but only when microphone permission is already
    * granted (never triggers a fresh permission prompt on its own). */
   "voice.confirmationSpoken": { sessionId: string; msgId: string };
+  /** Phase 6 — the foreground wake-word listener (lib/voice/wakeWord.ts)
+   * heard the wake phrase and is handing off to real capture. */
+  "voice.wakeWordDetected": { sessionId: string };
 
   "tool.requested": { toolName: string; callId: string; params: unknown; sessionId: string };
   "tool.permission_required": { toolName: string; callId: string; sessionId: string };

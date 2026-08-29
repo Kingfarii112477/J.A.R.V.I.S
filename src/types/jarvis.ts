@@ -187,10 +187,10 @@ export interface JarvisSettings {
    * on-screen button either way. */
   voiceConfirmationsEnabled: boolean;
   /** Browser mics can't be always-on by default (privacy + permission
-   * model) — "push-to-talk"/"click-to-talk" are the only two available
-   * today; "wake-word" is reserved for a future pluggable wake-word
-   * engine (see lib/voice/wakeWord.ts) and currently behaves identically
-   * to click-to-talk if selected. */
+   * model) — "wake-word" runs a real, foreground-only keyword spotter
+   * (see lib/voice/wakeWord.ts) that listens for "Jarvis" while the
+   * Voice screen is open and microphone permission is already granted;
+   * it is never a background/always-listening service. */
   wakeWordMode: "push-to-talk" | "click-to-talk" | "wake-word";
 
   /** 0 Manual / 1 Assisted / 2 Supervised (default) / 3 Delegated /
