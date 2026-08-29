@@ -48,13 +48,18 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Typecheck
-        run: npx tsc --noEmit
-
       - name: Unit tests
         run: npm test
 
       - name: Build Next.js application
+        # Also serves as the typecheck gate: `next build` runs a full
+        # TypeScript check as one of its own build phases and fails the
+        # step on any type error. A separate `tsc --noEmit` step run
+        # BEFORE this one would fail on a clean checkout regardless of
+        # real errors — Next.js writes ambient route types (e.g.
+        # LayoutProps) into .next/types/ only as part of this build, so
+        # tsc has nothing to resolve those names against until after it
+        # runs at least once.
         run: npm run build
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
