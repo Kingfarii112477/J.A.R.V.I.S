@@ -184,3 +184,26 @@ describe("jarvisStore toasts", () => {
     expect(useJarvisStore.getState().toasts.find((t) => t.id === toast.id)).toBeUndefined();
   });
 });
+
+describe("jarvisStore Phase 6 system-status fields", () => {
+  it("setNetworkOnline updates networkOnline", () => {
+    useJarvisStore.getState().setNetworkOnline(false);
+    expect(useJarvisStore.getState().networkOnline).toBe(false);
+    useJarvisStore.getState().setNetworkOnline(true);
+    expect(useJarvisStore.getState().networkOnline).toBe(true);
+  });
+
+  it("setMicPermissionDenied updates micPermissionDenied", () => {
+    useJarvisStore.getState().setMicPermissionDenied(true);
+    expect(useJarvisStore.getState().micPermissionDenied).toBe(true);
+    useJarvisStore.getState().setMicPermissionDenied(false);
+    expect(useJarvisStore.getState().micPermissionDenied).toBe(false);
+  });
+
+  it("setDeviceBridgeHealthy updates deviceBridgeHealthy, including back to null", () => {
+    useJarvisStore.getState().setDeviceBridgeHealthy(true);
+    expect(useJarvisStore.getState().deviceBridgeHealthy).toBe(true);
+    useJarvisStore.getState().setDeviceBridgeHealthy(null);
+    expect(useJarvisStore.getState().deviceBridgeHealthy).toBeNull();
+  });
+});

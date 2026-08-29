@@ -30,6 +30,7 @@ export function useVoice() {
   const wakeWordMode = useJarvisStore((s) => s.settings.wakeWordMode);
   const activeToolCalls = useJarvisStore((s) => s.activeToolCalls);
   const pushToast = useJarvisStore((s) => s.pushToast);
+  const setMicPermissionDenied = useJarvisStore((s) => s.setMicPermissionDenied);
   const playSound = useSound();
   const sessionId = useRef(getSessionId());
 
@@ -164,6 +165,7 @@ export function useVoice() {
         error: "Could not access the microphone. Voice input is temporarily unavailable.",
       };
       setPermission(permissionResult.reason === "denied" ? "denied" : "unknown");
+      if (permissionResult.reason === "denied") setMicPermissionDenied(true);
       setErrorMsg(messages[permissionResult.reason]);
       eventBus.emit("voice.error", { sessionId: sessionId.current, message: messages[permissionResult.reason], code: permissionResult.reason });
       goError();
@@ -171,6 +173,7 @@ export function useVoice() {
       return;
     }
     setPermission("granted");
+    setMicPermissionDenied(false);
     eventBus.emit("voice.started", { sessionId: sessionId.current });
 
     try {
@@ -265,7 +268,7 @@ export function useVoice() {
     // it's intentionally left out of this dependency list — including it
     // would just make `startListening` churn identity every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [goError, goIdle, goListening, playSound, pushToast, sttProvider, teardown, teardownVisualization, voiceInterruptEnabled, state, stopSpeaking]);
+  }, [goError, goIdle, goListening, playSound, pushToast, setMicPermissionDenied, sttProvider, teardown, teardownVisualization, voiceInterruptEnabled, state, stopSpeaking]);
 
   /** Sends transcribed text through the shared message pipeline (dispatcher
    * → AI fallback → TTS), or returns to idle if there's nothing to send.

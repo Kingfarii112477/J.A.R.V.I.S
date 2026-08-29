@@ -168,6 +168,25 @@ interface JarvisStore {
   aiConnection: "unknown" | "connected" | "demo" | "error";
   setAiConnection: (v: "unknown" | "connected" | "demo" | "error") => void;
 
+  /** True network reachability (see lib/system/network.ts) — never
+   * persisted, always starts true and gets corrected by useSystemStatus's
+   * live probe on mount so a stale localStorage value can never claim
+   * connectivity that isn't actually there. */
+  networkOnline: boolean;
+  setNetworkOnline: (v: boolean) => void;
+  /** The user explicitly denied microphone access this session (see
+   * useVoice.ts). Never persisted — a fresh session always gets a fresh
+   * chance to grant it. */
+  micPermissionDenied: boolean;
+  setMicPermissionDenied: (v: boolean) => void;
+  /** Result of the last real probe against the native device bridge (see
+   * lib/system/deviceBridgeHealth.ts) — null when not running natively or
+   * not yet probed. Lives in the store (rather than component state) so
+   * any component can read it without re-mounting the probing effect
+   * itself; only useSystemStatus.ts ever writes to it. */
+  deviceBridgeHealthy: boolean | null;
+  setDeviceBridgeHealthy: (v: boolean | null) => void;
+
   toasts: { id: string; message: string; variant: "info" | "success" | "warning" | "error" | "system"; title?: string }[];
   pushToast: (message: string, variant?: "info" | "success" | "warning" | "error" | "system", title?: string) => void;
   dismissToast: (id: string) => void;
@@ -274,6 +293,13 @@ export const useJarvisStore = create<JarvisStore>()(
 
       aiConnection: "unknown",
       setAiConnection: (v) => set({ aiConnection: v }),
+
+      networkOnline: true,
+      setNetworkOnline: (v) => set({ networkOnline: v }),
+      micPermissionDenied: false,
+      setMicPermissionDenied: (v) => set({ micPermissionDenied: v }),
+      deviceBridgeHealthy: null,
+      setDeviceBridgeHealthy: (v) => set({ deviceBridgeHealthy: v }),
 
       toasts: [],
       pushToast: (message, variant = "info", title) =>

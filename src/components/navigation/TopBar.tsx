@@ -7,7 +7,14 @@ import { NavDrawer } from "./NavDrawer";
 import { StatusIndicator } from "@/components/common/StatusIndicator";
 import { navItems } from "@/config/navigation";
 import { useJarvisStore } from "@/store/jarvisStore";
+import { useSystemStatusValue } from "@/hooks/useSystemStatus";
 import { cn } from "@/lib/utils/cn";
+
+/** Every status handled by an existing indicator (StatusIndicator's own
+ * OFFLINE dot, or the long-standing DEMO badge below for aiConnection ===
+ * "demo") is deliberately excluded here — this badge only ever surfaces
+ * the honest statuses that had no visible UI before Phase 6. */
+const BADGE_STATUSES = new Set(["VOICE_UNAVAILABLE", "DEVICE_BRIDGE_UNAVAILABLE", "AI_PROVIDER_UNAVAILABLE"]);
 
 export function TopBar() {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -15,6 +22,7 @@ export function TopBar() {
   const pathname = usePathname();
   const state = useJarvisStore((s) => s.state);
   const aiConnection = useJarvisStore((s) => s.aiConnection);
+  const { status: systemStatus, label: systemStatusLabel } = useSystemStatusValue();
 
   const current = navItems.find((item) => item.href === pathname);
   const title = current ? current.label.toUpperCase() : "J.A.R.V.I.S.";
@@ -40,6 +48,14 @@ export function TopBar() {
             {aiConnection === "demo" && (
               <span className="font-technical rounded-full border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[9px] tracking-[0.15em] text-warning">
                 DEMO
+              </span>
+            )}
+            {BADGE_STATUSES.has(systemStatus) && (
+              <span
+                className="font-technical rounded-full border border-danger/30 bg-danger/10 px-1.5 py-0.5 text-[9px] tracking-[0.15em] text-danger"
+                title={systemStatusLabel}
+              >
+                {systemStatusLabel}
               </span>
             )}
           </div>

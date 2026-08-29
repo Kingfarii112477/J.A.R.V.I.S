@@ -5,8 +5,10 @@ import { BootSequence } from "@/components/hud/BootSequence";
 import { JarvisShell } from "@/components/layout/JarvisShell";
 import { useJarvisStore } from "@/store/jarvisStore";
 import { useTelemetryEngine } from "@/hooks/useTelemetry";
+import { useSystemStatus } from "@/hooks/useSystemStatus";
 import { eventBus } from "@/lib/events/bus";
 import { registerCoreReactions } from "@/lib/orchestration/coreReactions";
+import { checkAiHealth } from "@/lib/system/health";
 
 export function AppShellGate({ children }: { children: ReactNode }) {
   const booted = useJarvisStore((s) => s.booted);
@@ -18,6 +20,7 @@ export function AppShellGate({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
 
   useTelemetryEngine();
+  useSystemStatus();
 
   useEffect(() => {
     setHydrated(true);
@@ -26,10 +29,7 @@ export function AppShellGate({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    fetch("/api/health")
-      .then((res) => res.json())
-      .then((data) => setAiConnection(data.aiConnection === "connected" ? "connected" : "demo"))
-      .catch(() => setAiConnection("error"));
+    void checkAiHealth().then(setAiConnection);
   }, [setAiConnection]);
 
   useEffect(() => {
