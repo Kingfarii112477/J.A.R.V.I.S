@@ -1,6 +1,32 @@
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 
+// Release signing — deliberately never hardcoded. GitHub Actions
+// (.github/workflows/android-release.yml) decodes the ANDROID_KEYSTORE_BASE64
+// secret to android/app/release.keystore and exports ANDROID_KEYSTORE_PASSWORD /
+// ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD as env vars before invoking Gradle.
+// For local release-build testing, copy android/keystore.properties.example to
+// android/keystore.properties (already gitignored, same as every *.keystore/
+// *.jks file) instead of exporting env vars — env vars always win when both
+// are present. Neither path is required: with nothing configured, `release`
+// simply builds unsigned (fine for local testing; CI always has the real
+// secrets), so assembleDebug/assembleRelease never break for a plain checkout.
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+def resolveSigningValue = { String envName, String propName ->
+    return System.getenv(envName) ?: keystoreProperties.getProperty(propName)
+}
+
+def releaseStorePassword = resolveSigningValue("ANDROID_KEYSTORE_PASSWORD", "storePassword")
+def releaseKeyAlias = resolveSigningValue("ANDROID_KEY_ALIAS", "keyAlias")
+def releaseKeyPassword = resolveSigningValue("ANDROID_KEY_PASSWORD", "keyPassword")
+def releaseStoreFile = file(resolveSigningValue("ANDROID_KEYSTORE_PATH", "storeFile") ?: "release.keystore")
+def hasReleaseSigning = releaseStorePassword && releaseKeyAlias && releaseKeyPassword && releaseStoreFile.exists()
+
 android {
     namespace = "com.jarvis.aios"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -24,10 +50,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile releaseStoreFile
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig hasReleaseSigning ? signingConfigs.release : null
         }
     }
 }
