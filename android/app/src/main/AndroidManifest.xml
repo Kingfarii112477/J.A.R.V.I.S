@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:theme="@style/AppTheme">
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+
+    <!--
+      Permissions — every one here is either always safe (INTERNET, network/
+      state reads) or gated behind an explicit Android runtime permission
+      prompt before J.A.R.V.I.S ever uses it (mic/camera/location/
+      notifications). Declaring a permission here is not the same as having
+      it: see DeviceCapabilityPlugin.kt, which never calls a
+      permission-gated API without first checking/requesting it live.
+    -->
+
+    <!-- Network -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- Voice — explicit runtime permission, never silently activated -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Camera / location — declared for future capabilities per the Phase 6
+         spec ("implement where technically and legally supported"); the app
+         does not currently request or use either at runtime. Removing the
+         declaration entirely is safer until a real feature needs it, so
+         these stay commented out rather than granted-but-unused. -->
+    <!-- <uses-permission android:name="android.permission.CAMERA" /> -->
+    <!-- <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" /> -->
+    <!-- <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" /> -->
+
+    <!-- Notifications (Android 13+ requires this to be requested at runtime
+         even once declared) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Bluetooth state (Android 12+ scoped permission; used only to report
+         Bluetooth on/off in device status, never to pair/connect) -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- Package visibility (Android 11+): declares exactly which apps
+         J.A.R.V.I.S is allowed to check availability for / launch / deep-link
+         into — deliberately NOT the broad QUERY_ALL_PACKAGES permission,
+         which Google Play restricts to a narrow set of approved use cases
+         and which this app does not need. Add an entry here for every app
+         a launch_app/deep-link tool targets. -->
+    <queries>
+        <package android:name="com.google.android.youtube" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+    </queries>
+</manifest>

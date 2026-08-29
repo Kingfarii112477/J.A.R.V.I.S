@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Production default: HTTPS only, everywhere. Cleartext (plain HTTP) is
+  never allowed for any domain — matches capacitor.config.ts's
+  server.cleartext = false. There is no debug-only cleartext override here
+  because the app always points at a real HTTPS deployment (CAPACITOR_SERVER_URL),
+  never a bare-HTTP local dev server, even for debug builds.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

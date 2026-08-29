@@ -1,0 +1,10 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+# Netlify's Next.js Runtime (auto-detected for a Next.js project) adapts
+# the App Router's API routes (/api/voice/*, /api/reasoning, ...) into
+# Netlify Functions automatically — no manual netlify/functions/ rewrite
+# needed. Server-side env vars (ASSEMBLYAI_API_KEY, AZURE_SPEECH_KEY, AI
+# provider keys, etc.) are configured in the Netlify dashboard / via
+# manage-env-vars, never committed here.

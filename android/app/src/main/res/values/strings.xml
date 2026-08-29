@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">J.A.R.V.I.S</string>
+    <string name="title_activity_main">J.A.R.V.I.S</string>
+    <string name="package_name">com.jarvis.aios</string>
+    <string name="custom_url_scheme">com.jarvis.aios</string>
+</resources>

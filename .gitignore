@@ -40,3 +40,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Android release signing — never commit these, wherever they end up.
+# Real signing happens in CI from GitHub Secrets, not a local file.
+*.keystore
+*.jks
+keystore.properties
