@@ -54,7 +54,7 @@ describe("POST /api/reasoning", () => {
   });
 
   it("streams provider events when OPENROUTER_API_KEY is configured", async () => {
-    process.env.OPENROUTER_API_KEY = "test-key";
+    process.env.OPENROUTER_API_KEY = "sk-or-test-key";
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({

@@ -38,8 +38,22 @@ export interface ResolvedProviderConfig {
  * three are configured (n8n-only or demo-mode deployments) — callers
  * fall back to their own non-function-calling path in that case.
  */
+/** Real OpenRouter API keys are always issued in the "sk-or-..." format
+ * (https://openrouter.ai/docs) — this guards against a real production
+ * incident where some hosting platforms silently inject an
+ * OPENROUTER_API_KEY-named env var of their own (observed: a ~366-char
+ * JWT, nothing like a real key) that isn't actually usable as one,
+ * shadowing this app's intended provider regardless of which provider
+ * was actually configured by the user. Trusting only a plausibly-shaped
+ * value here means an unrelated env var sharing this name can never
+ * silently hijack provider selection — worst case, it's ignored and the
+ * priority order falls through to the next real provider. */
+function looksLikeOpenRouterKey(key: string): boolean {
+  return key.startsWith("sk-or-");
+}
+
 export function resolveProviderConfig(intent: IntentCategory): ResolvedProviderConfig | null {
-  if (process.env.OPENROUTER_API_KEY) {
+  if (process.env.OPENROUTER_API_KEY && looksLikeOpenRouterKey(process.env.OPENROUTER_API_KEY)) {
     return {
       providerId: "openrouter",
       baseUrl: "https://openrouter.ai/api/v1",
