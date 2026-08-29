@@ -118,6 +118,15 @@ describe("streamReasoningTurn", () => {
     expect(events[0]).toMatchObject({ type: "error" });
   });
 
+  it("adds an actionable API-key hint when the provider responds 401", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(sseResponse([], false, 401)));
+    const events = await collect(streamReasoningTurn(provider, baseMessages, []));
+    expect(events[0]).toMatchObject({
+      type: "error",
+      message: expect.stringMatching(/API key is missing, wrong, or was revoked/i),
+    });
+  });
+
   it("emits an error event (never throws) on a network failure", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
     const events = await collect(streamReasoningTurn(provider, baseMessages, []));

@@ -1,6 +1,7 @@
 import "server-only";
 import type { ReasoningMessage, ReasoningStreamEvent, ReasoningToolSchema } from "./types";
 import type { ResolvedProviderConfig } from "@/lib/ai";
+import { describeProviderFailure } from "@/lib/ai/providerError";
 
 /** Converts this app's internal ReasoningMessage shape into the OpenAI
  * "tools" chat-completions wire format that OpenRouter/Groq/most
@@ -82,7 +83,7 @@ export async function* streamReasoningTurn(
 
   if (!res.ok || !res.body) {
     const body = await res.text().catch(() => "");
-    yield { type: "error", message: `AI provider request failed (${res.status}): ${body.slice(0, 200)}` };
+    yield { type: "error", message: describeProviderFailure(res.status, body) };
     return;
   }
 

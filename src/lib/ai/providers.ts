@@ -1,4 +1,5 @@
 import type { AIMessage } from "./types";
+import { describeProviderFailure } from "./providerError";
 
 interface OpenAICompatibleConfig {
   baseUrl: string;
@@ -29,7 +30,7 @@ export async function* streamOpenAICompatible(
 
   if (!res.ok || !res.body) {
     const body = await res.text().catch(() => "");
-    throw new Error(`AI provider request failed (${res.status}): ${body.slice(0, 200)}`);
+    throw new Error(describeProviderFailure(res.status, body));
   }
 
   const reader = res.body.getReader();
