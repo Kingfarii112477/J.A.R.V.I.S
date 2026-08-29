@@ -71,7 +71,17 @@
          and which this app does not need. Add an entry here for every app
          a launch_app/deep-link tool targets. -->
     <queries>
+        <!-- Keep this list in sync with the app-name -> package map in
+             src/lib/tools/deviceTools.ts (KNOWN_APPS) — a package launch_app
+             can target must be declared here or Android hides it entirely,
+             regardless of whether it's actually installed. -->
         <package android:name="com.google.android.youtube" />
+        <package android:name="com.whatsapp" />
+        <package android:name="com.google.android.gm" />
+        <package android:name="com.android.chrome" />
+        <package android:name="com.google.android.apps.maps" />
+        <package android:name="com.spotify.music" />
+        <package android:name="com.android.settings" />
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />

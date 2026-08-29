@@ -34,9 +34,21 @@ const SPEC_EXAMPLES = [
     expectLanguage: "roman-ur",
   },
   { label: "Voice Command Center worked-example transcript", text: "System ka diagnostic chalao", expectLanguage: "roman-ur" },
+  // Phase 6: the YouTube command flow's worked example — "search karo" is
+  // the same English-verb-plus-Urdu/Hindi-auxiliary code-switch pattern as
+  // "run karo" above, so this is Hinglish too. Handled by the reasoning
+  // engine calling the youtube_search tool (lib/tools/deviceTools.ts) —
+  // this file only verifies the deterministic layers around that call
+  // (language resolution + directive + dispatcher/router fallthrough),
+  // same as every other example here.
+  {
+    label: "YouTube command flow worked example (Phase 6)",
+    text: "JARVIS YouTube par new Urdu rap songs search karo.",
+    expectLanguage: "hinglish",
+  },
 ] as const;
 
-describe("Phase 5 multilingual spec examples", () => {
+describe("Phase 5/6 multilingual spec examples", () => {
   for (const example of SPEC_EXAMPLES) {
     describe(example.label, () => {
       it("resolveLanguage classifies it as expected under default (auto) settings", () => {
