@@ -31,6 +31,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The native Android project (Capacitor) — Gradle build intermediates
+    // under android/**/build/ bundle third-party/generated JS (the Cordova
+    // bridge, Capacitor's own native-bridge.js) that isn't this project's
+    // source and was never meant to be linted against this app's rules.
+    // Kotlin sources under android/app/src aren't JS/TS either way, so
+    // this whole tree has nothing for this config to check.
+    "android/**",
   ]),
 ]);
 
