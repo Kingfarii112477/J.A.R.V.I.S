@@ -60,6 +60,10 @@ jobs:
         # LayoutProps) into .next/types/ only as part of this build, so
         # tsc has nothing to resolve those names against until after it
         # runs at least once.
+        #
+        # This is the WEB build, kept because it exercises the API routes
+        # the Android build deliberately excludes — so a break in either
+        # half is caught here.
         run: npm run build
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
@@ -85,13 +89,27 @@ jobs:
           echo "Android build-tools: ${{ env.ANDROID_BUILD_TOOLS }}"
           echo "Gradle wrapper:  $(grep distributionUrl android/gradle/wrapper/gradle-wrapper.properties)"
 
-      - name: Sync Capacitor Android project
-        run: npx cap sync android
-        env:
-          # Optional override — capacitor.config.ts already defaults to the
-          # deployed Netlify URL. Set the CAPACITOR_SERVER_URL repository
-          # variable only if the app should point somewhere else.
-          CAPACITOR_SERVER_URL: ${{ vars.CAPACITOR_SERVER_URL }}
+      - name: Build standalone Android web assets
+        # The Android app is self-contained: this produces a static export
+        # of the whole UI into out/ and syncs it into the APK, so the
+        # shipped app needs no server and no hosted deployment. The script
+        # temporarily moves src/app/api aside (Next refuses output:export
+        # with route handlers present) and restores it in a finally block.
+        run: npm run build:android
+
+      - name: Verify the APK will be self-contained
+        # Guards the whole point of the standalone build: fail loudly if a
+        # server URL ever creeps back into the native config, or if the UI
+        # didn't actually get bundled.
+        run: |
+          test -f android/app/src/main/assets/public/index.html \
+            || { echo "::error::The UI was not bundled into the APK."; exit 1; }
+          if grep -q '"server"' android/app/src/main/assets/capacitor.config.json; then
+            echo "::error::capacitor.config.json contains a server URL — the app would load remotely."
+            exit 1
+          fi
+          echo "Bundled files: $(find android/app/src/main/assets/public -type f | wc -l)"
+          echo "No server URL present — app is self-contained."
 
       - name: Restore release keystore from secret
         if: env.HAS_RELEASE_KEYSTORE == 'true'
@@ -107,10 +125,6 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          # Optional: enables the on-device Porcupine wake word. Absent, the
-          # build still succeeds and continuous listening reports wake-word
-          # detection as unconfigured rather than faking it.
-          PICOVOICE_ACCESS_KEY: ${{ secrets.PICOVOICE_ACCESS_KEY }}
 
       - name: Build release AAB
         working-directory: android
@@ -119,10 +133,6 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          # Optional: enables the on-device Porcupine wake word. Absent, the
-          # build still succeeds and continuous listening reports wake-word
-          # detection as unconfigured rather than faking it.
-          PICOVOICE_ACCESS_KEY: ${{ secrets.PICOVOICE_ACCESS_KEY }}
 
       - name: Verify artifacts were produced
         run: |
