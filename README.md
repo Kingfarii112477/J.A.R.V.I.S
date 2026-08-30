@@ -248,39 +248,72 @@ never presented to the user as always-listening, because it isn't.
 
 ### Hands-free continuous listening
 
-Inside the Android app, J.A.R.V.I.S can stay armed and answer without
-being touched:
+J.A.R.V.I.S can stay armed and answer without being touched — in the
+Android app **and in the browser**:
 
 ```
-"Jarvis."          → on-device wake word, no audio leaves the phone
+"Hey JARVIS."      → on-device wake word, no audio leaves the device
 "Yes, Sir?"        → spoken acknowledgement (interruptible)
 "YouTube par naye Urdu rap songs search karo."
 "Certainly, Sir."  → the SAME reasoning engine, tools and Azure TTS
 "Now only show the newest ones."   ← no wake word needed (follow-up window)
 ```
 
-**Wake word (`android/app/src/main/java/com/jarvis/aios/wake/`).** Real
-on-device detection via [Picovoice
-Porcupine](https://picovoice.ai/docs/porcupine/), which ships **"Jarvis"
-as a built-in keyword** — no custom model to train or bundle. Detection
-runs entirely offline at a small fixed cost per audio frame, which is
-what makes always-on listening viable on a battery instead of streaming
-audio to a cloud recognizer.
+**Wake word — openWakeWord.** Real on-device detection using
+[openWakeWord](https://github.com/dscripka/openWakeWord)'s pre-trained
+**`hey_jarvis`** model. Chosen specifically because it needs **no
+account, no API key and no network** — the three ONNX models ship with
+the app (~3.7 MB total) and inference is entirely local.
 
-Porcupine needs a free **AccessKey** from
-[console.picovoice.ai](https://console.picovoice.ai). Supply it exactly
-like the signing credentials — env var, or an optional gitignored
-`android/keystore.properties` — never hardcoded:
+It is a three-stage chain, and every shape below was verified by running
+the real model files rather than assumed:
 
-```bash
-export PICOVOICE_ACCESS_KEY=your-key    # or picovoiceAccessKey= in keystore.properties
+```
+16 kHz mono audio
+  → 1280-sample frames (80 ms)
+  → melspectrogram.onnx     → 5 frames × 32 mel bins
+  → (v / 10) + 2            ← openWakeWord's required transform
+  → sliding 76-frame window, step 8
+      → embedding_model.onnx → 96 dims
+  → sliding 16-embedding window
+      → hey_jarvis_v0.1.onnx → score
 ```
 
-In CI, add it as the `PICOVOICE_ACCESS_KEY` repository secret. **With no
-key the build still succeeds** and the app honestly reports wake-word
-detection as unavailable rather than faking it — verified: the compiled
-`BuildConfig.PICOVOICE_ACCESS_KEY` is `""` and no key material appears
-in the APK.
+Measured on those real models: **~0.9 % of one CPU core** for realtime
+audio, and no false triggers on silence, noise or a pure tone (max score
+3.4e-5 against a 0.5 threshold). A detection needs ~3.14 s of audio
+context (76 + 8×15 = 196 mel frames), so a freshly started detector is
+briefly *warming up* rather than broken — the UI says so.
+
+The sliding-window math lives in one place
+(`lib/voice/wake/featurePipeline.ts`) with the model calls injected, so
+it is unit-tested with no ONNX runtime at all; the Kotlin engine mirrors
+the same logic. False-activation protection (threshold + debounce) is a
+separate, separately-tested `WakeDetectionGate` — the debounce is not
+cosmetic, since one spoken phrase stays inside the classifier's ~3 s
+context for dozens of consecutive 80 ms frames and would otherwise fire
+every 80 ms.
+
+> **Model licence — read before shipping commercially.** openWakeWord's
+> *code* is Apache 2.0, but its **pre-trained models are CC BY-NC-SA 4.0
+> (NonCommercial)** because of their training data. That is fine for
+> personal and non-commercial use, and it is a genuine restriction on
+> paid or commercial distribution. To ship commercially you would need
+> to train a permissively-licensed `hey_jarvis` model (openWakeWord
+> documents the training pipeline) or use a different engine.
+
+**Where it runs.**
+
+| | Browser | Android app |
+|---|---|---|
+| Engine | `onnxruntime-web` (WASM) | `onnxruntime-android` |
+| Models | served from `/models/wakeword/` | bundled in `assets/wakeword/` |
+| Works when backgrounded | **No** — page-lifetime only | Yes, foreground service |
+| Requires HTTPS | Yes (`getUserMedia`) | n/a |
+
+The browser path is genuinely real detection, not a stub — but it only
+listens while the page is alive, and it is never presented as background
+listening. That remains the native service's job.
 
 **Privacy — the whole reason it's built this way.** While in standby,
 microphone audio is consumed *only* by the local detector. It is never
