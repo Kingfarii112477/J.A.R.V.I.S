@@ -246,6 +246,101 @@ make that a materially bigger undertaking — a persistent foreground
 continuous audio to a cloud STT provider just to spot one word. This is
 never presented to the user as always-listening, because it isn't.
 
+### Hands-free continuous listening
+
+Inside the Android app, J.A.R.V.I.S can stay armed and answer without
+being touched:
+
+```
+"Jarvis."          → on-device wake word, no audio leaves the phone
+"Yes, Sir?"        → spoken acknowledgement (interruptible)
+"YouTube par naye Urdu rap songs search karo."
+"Certainly, Sir."  → the SAME reasoning engine, tools and Azure TTS
+"Now only show the newest ones."   ← no wake word needed (follow-up window)
+```
+
+**Wake word (`android/app/src/main/java/com/jarvis/aios/wake/`).** Real
+on-device detection via [Picovoice
+Porcupine](https://picovoice.ai/docs/porcupine/), which ships **"Jarvis"
+as a built-in keyword** — no custom model to train or bundle. Detection
+runs entirely offline at a small fixed cost per audio frame, which is
+what makes always-on listening viable on a battery instead of streaming
+audio to a cloud recognizer.
+
+Porcupine needs a free **AccessKey** from
+[console.picovoice.ai](https://console.picovoice.ai). Supply it exactly
+like the signing credentials — env var, or an optional gitignored
+`android/keystore.properties` — never hardcoded:
+
+```bash
+export PICOVOICE_ACCESS_KEY=your-key    # or picovoiceAccessKey= in keystore.properties
+```
+
+In CI, add it as the `PICOVOICE_ACCESS_KEY` repository secret. **With no
+key the build still succeeds** and the app honestly reports wake-word
+detection as unavailable rather than faking it — verified: the compiled
+`BuildConfig.PICOVOICE_ACCESS_KEY` is `""` and no key material appears
+in the APK.
+
+**Privacy — the whole reason it's built this way.** While in standby,
+microphone audio is consumed *only* by the local detector. It is never
+buffered to disk, uploaded, sent to AssemblyAI, or sent to the model.
+The only thing that escapes the native standby loop is the fact that the
+wake phrase was heard. The in-app indicator
+(`components/voice/ListeningIndicator.tsx`) deliberately never merges
+"the microphone is open" with "audio is leaving this device" — in
+standby it says both, truthfully, and `isAudioLeavingDevice("STANDBY")`
+is `false` with a test asserting exactly that. Audit entries
+(`VOICE_LISTENING`) record *timing only* — `wake_word.detected`,
+`active_listening.started/ended`, `voice_command.processed` — never
+audio and never transcripts.
+
+**One brain.** `hooks/useContinuousListening.ts` decides *when* to start
+capturing and when to hand the microphone back. It does not transcribe,
+reason, execute tools, or speak: it calls the same `startListening` /
+`speak` a manual mic tap already uses, so a hands-free turn and a tapped
+turn run byte-for-byte the same STT → language detection →
+ReasoningEngine → ToolRegistry → PermissionManager → AuditLogger → Azure
+TTS pipeline. Voice is an input mechanism, never a security boundary —
+a spoken "delete all memories" still goes through the same CONFIRM flow,
+and a RESTRICTED tool stays blocked.
+
+**Foreground service** (`android/.../listening/`). A `START_STICKY`
+foreground microphone service owns the mic, audio focus, battery-aware
+suspension, headset/Bluetooth route changes, and recovery independent of
+the WebView. On wake it *releases* the mic so the WebView's own
+`getUserMedia` can acquire it — Android grants audio input to one
+consumer at a time, and this hand-off is what stops the two from
+fighting over it. The ongoing notification says plainly that the mic is
+in use and offers a one-tap stop; microphone use is never hidden.
+
+Call interruptions are detected through **audio focus** rather than
+`READ_PHONE_STATE`, deliberately — it covers calls and other apps taking
+audio without requesting a privacy-sensitive permission the app doesn't
+otherwise need.
+
+**Honest limitations** (Android platform behaviour, not worked around):
+
+- Android 14+ only allows a microphone foreground service to *start*
+  while the app is visible. Enable continuous listening with the app
+  open; the service then keeps running. If Android refuses the start,
+  the app says so instead of claiming to listen.
+- The OS (and aggressive OEM battery managers) may stop the service
+  under memory pressure. It is `START_STICKY` and re-arms on
+  recreation, and the UI always reflects the service's real state.
+- **Voice barge-in during playback is not claimed.** Tapping the mic
+  while J.A.R.V.I.S is speaking interrupts it (Phase 5, unchanged), and
+  the follow-up window listens with the mic genuinely open. But
+  interrupting *by voice alone mid-sentence* needs acoustic echo
+  cancellation so the mic doesn't hear the phone's own speaker — that is
+  a real additional undertaking and is not implemented, so it is not
+  advertised.
+- **Not verified on real hardware.** Everything above compiles and is
+  unit-tested, and the APK/AAB build cleanly, but this project's
+  development environment has no Android device or emulator. Wake-word
+  accuracy, service survival across lock/unlock, and true battery draw
+  need testing on a real phone before trusting them.
+
 **Local build**
 
 ```bash
