@@ -116,6 +116,26 @@ describe("setCredential", () => {
   });
 });
 
+describe("clearCredentials", () => {
+  it("propagates a failed wipe rather than letting the UI claim the keys are gone", async () => {
+    const mod = await freshModule();
+    clearAll.mockRejectedValue(new Error("still stored on this device"));
+    await expect(mod.clearCredentials()).rejects.toThrow("still stored on this device");
+  });
+
+  it("drops the cache after a successful wipe", async () => {
+    const mod = await freshModule();
+    getAll.mockResolvedValue({ GROQ_API_KEY: "abc" });
+    await mod.loadCredentials();
+
+    clearAll.mockResolvedValue(undefined);
+    await mod.clearCredentials();
+
+    getAll.mockResolvedValue({});
+    expect(await mod.loadCredentials()).toEqual({});
+  });
+});
+
 describe("diagnoseCredentialStore", () => {
   it("passes the native diagnosis through", async () => {
     const mod = await freshModule();

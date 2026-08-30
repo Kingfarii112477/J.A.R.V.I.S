@@ -86,10 +86,22 @@ export function ProviderKeysSection() {
   }
 
   async function forgetAll() {
-    await clearCredentials();
-    setDrafts({});
-    refresh();
-    pushToast("All provider keys removed from this device.", "success", "Providers");
+    try {
+      // Only claim the keys are gone once the native side confirms none
+      // remain — announcing a wipe that didn't happen would leave secrets
+      // on the device while the user believes otherwise.
+      await clearCredentials();
+      setDrafts({});
+      refresh();
+      pushToast("All provider keys removed from this device.", "success", "Providers");
+    } catch (err) {
+      pushToast(
+        err instanceof Error ? err.message : "The keys could not be removed from this device.",
+        "error",
+        "Providers"
+      );
+      refresh();
+    }
   }
 
   return (

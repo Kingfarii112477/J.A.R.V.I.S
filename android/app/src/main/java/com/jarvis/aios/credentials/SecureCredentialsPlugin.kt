@@ -241,7 +241,19 @@ class SecureCredentialsPlugin : Plugin() {
      * action. */
     @PluginMethod
     fun clearAll(call: PluginCall) {
-        prefs().edit().clear().commit()
+        // The result is checked rather than discarded: "your keys are
+        // gone" is a security claim, and telling someone their secrets
+        // were erased when they are still on disk is the one outcome
+        // worse than failing outright.
+        if (!prefs().edit().clear().commit()) {
+            call.reject("The keys could not be removed — they are still stored on this device.")
+            return
+        }
+        val leftover = ALLOWED.count { prefs().contains(it) }
+        if (leftover > 0) {
+            call.reject("$leftover credential(s) could not be removed from this device.")
+            return
+        }
         call.resolve()
     }
 }
