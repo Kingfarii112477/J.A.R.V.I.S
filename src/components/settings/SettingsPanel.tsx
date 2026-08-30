@@ -18,6 +18,7 @@ import { SettingRow } from "./SettingRow";
 import { ToggleSwitch } from "./ToggleSwitch";
 import { SliderControl } from "./SliderControl";
 import { SecurityCenter } from "./SecurityCenter";
+import { ProviderKeysSection } from "./ProviderKeysSection";
 import { useJarvisStore, defaultSettings } from "@/store/jarvisStore";
 import { useJarvisState } from "@/hooks/useJarvisState";
 import { useVoiceProviderStatus, type VoiceProviderStatus } from "@/hooks/useVoiceProviderStatus";
@@ -385,6 +386,9 @@ export function SettingsPanel() {
 
           {activeTab === "ai" && (
             <div>
+              {/* Standalone Android only — renders nothing on the web,
+                  where secrets stay server-side in env vars. */}
+              <ProviderKeysSection />
               <SettingRow label="Response Style">
                 <Select
                   value={settings.aiPersonalityVerbosity}

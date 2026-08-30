@@ -201,28 +201,62 @@ media controls, device status, notifications — while every existing screen,
 the reasoning engine, tool governance, and the voice pipeline stay exactly
 as they are.
 
-**Architecture decision.** The Android shell is a Capacitor `WebView`
-pointed at a **deployed HTTPS URL** (`capacitor.config.ts`'s `server.url`,
-overridable via the `CAPACITOR_SERVER_URL` env var) rather than a static
-export bundled into the APK. This was a deliberate choice over the two
-alternatives the project could otherwise have used:
+**Architecture decision — fully standalone.** The Android app bundles the
+entire UI into the APK as a static export and talks to AI/voice providers
+**directly from the device**. There is no `server.url` in
+`capacitor.config.ts`, no hosted deployment, and no Netlify: nothing is
+loaded over the network to make the app work.
 
-- **A static export bundled into the APK** was ruled out because the app's
-  server-side API routes (`/api/chat`, `/api/reasoning`, `/api/voice/*`)
-  hold real secrets (`OPENROUTER_API_KEY`, `AZURE_SPEECH_KEY`, ...) that
-  cannot run inside a bundled WebView with no server behind it — confirmed
-  in the security scan below, the compiled app bundle is not even present
-  in the packaged APK/AAB, only a Cordova compatibility shim and a handful
-  of static placeholder assets. Everything else loads live over HTTPS, same
-  as a browser tab.
-- **A Trusted Web Activity (TWA)** was ruled out because it can't host the
-  custom native plugins this app needs (`launch_app`, `open_url` with a
-  real installed-app-vs-browser distinction, `media_control`,
-  `device_status`) — a TWA is essentially a Custom Tab with no bridge to
-  write Kotlin plugin code against.
-- **React Native** would have meant rewriting the entire UI a second time
-  for no architectural benefit here, directly against the master
-  requirement not to unnecessarily rewrite the existing app.
+Getting there meant solving the two problems that originally forced a
+remote-WebView design:
+
+1. **Secrets with no server.** Compiling keys into the APK is not an
+   option — anyone can extract strings from a distributed binary. Instead
+   you enter *your own* provider keys once in **Settings → AI Behavior →
+   Provider Keys**, and `SecureCredentialsPlugin` encrypts them with
+   AES-256-GCM under a non-exportable key generated inside the **Android
+   Keystore** (hardware-backed where the device has a TEE). The
+   preferences file is excluded from cloud backup and device transfer, so
+   keys never leave the phone. Verified: the built APK contains **zero**
+   key-shaped strings.
+2. **CORS.** Groq, Azure and AssemblyAI don't send CORS headers for
+   arbitrary web origins, so a plain WebView `fetch` to them would be
+   blocked. **CapacitorHttp** (built into `@capacitor/core`) patches
+   `fetch`/`XMLHttpRequest` onto Android's native HTTP stack, which is
+   what makes the direct calls work at all.
+
+**Still one brain.** `lib/runtime/` adds standalone twins of the routes
+the app needs — chat, reasoning, STT, TTS, health, voice status. They
+emit the *identical* event shapes and honour the same contracts, so the
+ReasoningEngine, ToolRegistry, permission governance, confirmations and
+audit logging are completely untouched; only the transport differs. The
+web deployment keeps its API routes and behaves exactly as before.
+
+**It works with no keys at all.** Voice falls back to the device's own
+speech engines (the same "unavailable" path the server's HTTP 501
+produced), and the wake word is fully on-device regardless. Adding keys
+upgrades quality — Azure neural voices, AssemblyAI accuracy, a real LLM
+for chat — rather than unlocking the feature.
+
+```bash
+npm run build:android          # static export + cap sync
+cd android && ./gradlew assembleRelease
+```
+
+`scripts/build-android.mjs` temporarily moves `src/app/api` aside during
+the export (Next.js refuses `output: "export"` while route handlers
+exist) and restores it in a `finally` block, so a failed build can never
+leave the repository without its API routes.
+
+**One honest difference from the web build:** CapacitorHttp resolves a
+complete response body rather than a progressive stream, so on-device
+chat text arrives in one burst instead of token-by-token. Tool calling,
+reasoning and voice are unaffected.
+
+Two alternatives were considered and rejected: a **Trusted Web Activity**
+can't host the custom native plugins this app needs (`launch_app`,
+`open_url`, `media_control`, `device_status`, continuous listening), and
+**React Native** would have meant rewriting the whole UI for no benefit.
 
 **Device Capability Bridge.** `src/lib/device/` mirrors the exact pattern
 already used for STT/TTS (`lib/voice/stt/`, `lib/voice/tts/`): one
