@@ -50,3 +50,7 @@ next-env.d.ts
 *.keystore
 *.jks
 keystore.properties
+
+# Static export for the standalone Android build (scripts/build-android.mjs)
+/out/
+/.api-stash/

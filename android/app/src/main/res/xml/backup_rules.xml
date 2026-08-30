@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pre-Android-12 backup rules. Same intent as data_extraction_rules.xml:
+  the encrypted provider API keys must never be included in a cloud
+  backup. See that file for the reasoning.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="jarvis_secure_credentials.xml" />
+</full-backup-content>

@@ -1,6 +1,7 @@
 package com.jarvis.aios
 
 import com.getcapacitor.BridgeActivity
+import com.jarvis.aios.credentials.SecureCredentialsPlugin
 import com.jarvis.aios.listening.ContinuousListeningPlugin
 
 /**
@@ -27,5 +28,8 @@ class MainActivity : BridgeActivity() {
         // to the already-running service on every Activity recreation
         // rather than restarting listening from scratch.
         registerPlugin(ContinuousListeningPlugin::class.java)
+        // Standalone build: there is no server holding provider secrets,
+        // so the user's own API keys are stored encrypted on-device here.
+        registerPlugin(SecureCredentialsPlugin::class.java)
     }
 }

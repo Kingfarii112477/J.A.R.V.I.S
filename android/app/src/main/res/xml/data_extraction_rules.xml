@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ backup/transfer rules.
+
+  The user's provider API keys are stored (encrypted) in the
+  jarvis_secure_credentials preferences file. Those must never leave the
+  device: cloud backup would put them on Google's servers, and a
+  device-to-device transfer would move them to hardware whose Keystore
+  cannot decrypt them anyway, leaving a confusing half-configured app.
+  Excluding the file means a restored install simply asks for the keys
+  again, which is the honest behaviour.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="jarvis_secure_credentials.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="jarvis_secure_credentials.xml" />
+    </device-transfer>
+</data-extraction-rules>

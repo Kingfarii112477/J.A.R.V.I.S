@@ -4,6 +4,7 @@ import { useCallback, useRef } from "react";
 import type { AIMessage } from "@/lib/ai/types";
 import { eventBus } from "@/lib/events/bus";
 import { classifyIntent } from "@/lib/ai/router";
+import { isStandalone } from "@/lib/runtime/standalone";
 
 export interface AIContextOptions {
   screen?: string;
@@ -41,6 +42,67 @@ export function useAI() {
     let providerId = "unknown";
 
     eventBus.emit("ai.request", { sessionId, text: message, intent: classifyIntent(message) });
+
+    // Standalone Android: no /api/chat exists, so call the provider
+    // directly with the on-device credentials. Everything downstream —
+    // the same onChunk/onDone/onError contract and the same bus events —
+    // is unchanged, so callers can't tell the transports apart.
+    if (isStandalone()) {
+      const { resolveStandaloneProvider, streamStandaloneCompletion } = await import(
+        "@/lib/runtime/providerConfig"
+      );
+      const { JARVIS_SYSTEM_PROMPT } = await import("@/config/ai");
+      const { assembleContext } = await import("@/lib/context/contextEngine");
+      try {
+        const provider = await resolveStandaloneProvider();
+        if (!provider) {
+          const reason =
+            "No AI provider is configured. Add an API key in Settings → AI Providers to bring J.A.R.V.I.S online.";
+          eventBus.emit("ai.error", { sessionId, message: reason });
+          onError(reason);
+          return;
+        }
+        providerId = provider.providerId;
+
+        // Reuse the SAME context assembly the server route uses, so the
+        // system prompt, memory and history trimming are identical.
+        const assembled = assembleContext({
+          systemPrompt: JARVIS_SYSTEM_PROMPT,
+          screen: context.screen ?? "chat",
+          jarvisState: context.jarvisState ?? "THINKING",
+          aiName: "J.A.R.V.I.S.",
+          addressUser: context.addressUser,
+          verbosity: context.verbosity ?? "balanced",
+          retrievedMemories: context.retrievedMemories ?? [],
+          activeTaskTitle: context.activeTaskTitle,
+          toolResult: context.toolResult,
+          history,
+        });
+
+        let fullText = "";
+        for await (const delta of streamStandaloneCompletion(
+          provider,
+          [...assembled, { role: "user", content: message }] as never,
+          { temperature: 0.6, signal: controller.signal }
+        )) {
+          fullText += delta;
+          onChunk(delta);
+        }
+        eventBus.emit("ai.response", {
+          sessionId,
+          text: fullText,
+          providerId,
+          latencyMs: Math.round(performance.now() - startedAt),
+        });
+        onDone();
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        const reason = err instanceof Error ? err.message : "AI core connection lost.";
+        eventBus.emit("ai.error", { sessionId, message: reason });
+        onError(reason);
+      }
+      return;
+    }
 
     try {
       const res = await fetch("/api/chat", {

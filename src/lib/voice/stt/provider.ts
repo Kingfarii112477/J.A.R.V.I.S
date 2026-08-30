@@ -1,4 +1,5 @@
 import type { SpeechRecognitionProvider, STTOptions } from "./types";
+import { isStandalone } from "@/lib/runtime/standalone";
 
 /** Records audio with MediaRecorder and uploads it to /api/voice/transcribe
  * on stop() for batch transcription (Whisper or AssemblyAI — whichever the
@@ -91,6 +92,29 @@ export class ServerSTTProvider implements SpeechRecognitionProvider {
     }
     const blob = new Blob(this.chunks, { type: this.chunks[0].type || "audio/webm" });
     this.chunks = [];
+
+    // Standalone Android: no /api/voice/transcribe exists, so transcribe
+    // directly with the on-device key. An unconfigured key maps to the
+    // same "unavailable" path the server's 501 produces, so the existing
+    // fallback to the device recognizer is unchanged — voice still works
+    // with no keys at all.
+    if (isStandalone()) {
+      const { transcribeStandalone } = await import("@/lib/runtime/standaloneVoice");
+      const outcome = await transcribeStandalone(blob);
+      if (this.aborted) return;
+      if (outcome.status !== "ok") {
+        opts.onError?.(outcome.message, outcome.status === "unavailable" ? "unavailable" : "error");
+        return;
+      }
+      opts.onResult({
+        transcript: outcome.value.transcript,
+        isFinal: true,
+        confidence: outcome.value.confidence,
+        detectedLanguageCode: outcome.value.detectedLanguageCode,
+      });
+      opts.onEnd?.();
+      return;
+    }
 
     try {
       const form = new FormData();

@@ -1,5 +1,6 @@
 import type { ReasoningMessage, ReasoningStreamEvent } from "./types";
 import type { ToolSchemaForModel } from "@/lib/tools/schema";
+import { isStandalone } from "@/lib/runtime/standalone";
 
 /**
  * Client-side reader for /api/reasoning's newline-delimited JSON stream —
@@ -17,6 +18,16 @@ export async function* streamReasoningEndpoint(
    * monitor), never load-bearing for the reasoning loop itself. */
   onMeta?: (meta: { providerId: string; model: string }) => void
 ): AsyncGenerator<ReasoningStreamEvent, void, unknown> {
+  // Standalone Android: no /api/reasoning exists, so run the turn
+  // against the provider directly using on-device credentials. Yields
+  // the identical event shapes, so the ReasoningEngine loop, tool
+  // governance, confirmations and audit logging are all unchanged.
+  if (isStandalone()) {
+    const { streamStandaloneReasoning } = await import("@/lib/runtime/standaloneReasoning");
+    yield* streamStandaloneReasoning(messages, tools, signal, onMeta);
+    return;
+  }
+
   const res = await fetch("/api/reasoning", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

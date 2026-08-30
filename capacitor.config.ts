@@ -1,34 +1,39 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 /**
- * The native shell wraps the SAME Next.js app deployed to Netlify — it
- * is not a bundled static copy. This is a deliberate architecture choice
- * (see README's "Native Android app" section): the app has server-side
- * API routes (/api/voice/*, /api/reasoning, ...) that hold real secrets
- * and cannot run inside a static WebView bundle, and a Trusted Web
- * Activity can't host the custom native plugins this app needs
- * (app-launch, deep links, device status, media controls). Capacitor
- * pointed at a live server URL gets both: real native plugin access AND
- * a backend that actually works.
+ * STANDALONE Android app — no server, no hosted deployment.
  *
- * CAPACITOR_SERVER_URL must be set to the production deployment before
- * building a release APK/AAB — the placeholder below will build, but the
- * app will only ever reach whatever that URL actually serves.
+ * The whole UI is bundled into the APK as a static export (built by
+ * scripts/build-android.mjs into out/), and the app talks to AI and
+ * voice providers directly from the device using credentials the user
+ * enters once in Settings and which are stored encrypted on-device
+ * (see SecureCredentialsPlugin.kt). There is deliberately no
+ * `server.url`: the app never loads its UI from the network.
+ *
+ * This replaces the earlier remote-WebView architecture, which pointed
+ * at a hosted deployment because the app's server-side API routes held
+ * the secrets. Those routes still exist for the web deployment; the
+ * Android build simply doesn't use them, calling providers itself
+ * instead.
+ *
+ * CapacitorHttp is enabled because that is what makes the direct calls
+ * possible: it patches fetch/XMLHttpRequest to go through Android's
+ * native HTTP stack, so requests to api.groq.com et al. are not subject
+ * to browser CORS rules (those providers do not send CORS headers for
+ * arbitrary web origins, so an unpatched WebView fetch would be blocked).
  */
-const serverUrl = process.env.CAPACITOR_SERVER_URL || "https://jarvis-ai-os-android.netlify.app";
-
 const config: CapacitorConfig = {
   appId: "com.jarvis.aios",
   appName: "J.A.R.V.I.S",
-  webDir: "public",
-  server: {
-    url: serverUrl,
-    cleartext: false,
-  },
+  // The static export produced by scripts/build-android.mjs.
+  webDir: "out",
   android: {
     allowMixedContent: false,
   },
   plugins: {
+    CapacitorHttp: {
+      enabled: true,
+    },
     SplashScreen: {
       launchShowDuration: 1200,
       backgroundColor: "#020409",

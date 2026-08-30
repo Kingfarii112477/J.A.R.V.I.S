@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useJarvisStore } from "@/store/jarvisStore";
 import { getSTTProvider } from "@/lib/voice/stt";
 import { browserTTSProvider } from "@/lib/voice/tts";
+import { isStandalone } from "@/lib/runtime/standalone";
 
 export type VoiceProviderStatus = "REAL" | "FALLBACK" | "UNAVAILABLE";
 
@@ -28,17 +29,38 @@ export function useVoiceProviderStatus() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch("/api/voice/status")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => {
+
+    void (async () => {
+      // Standalone Android: no /api/voice/status exists, so report which
+      // providers are usable from the on-device credential store. This
+      // REPLACES the fetch rather than racing it — an unconditional
+      // fetch would 404 on device and overwrite the real answer.
+      if (isStandalone()) {
+        const { standaloneVoiceStatus } = await import("@/lib/runtime/standaloneVoice");
+        const { stt, tts } = await standaloneVoiceStatus();
+        if (cancelled) return;
+        setData({
+          // Only the providers the standalone app implements directly
+          // are reported available; the rest are honestly false rather
+          // than silently omitted.
+          stt: { assemblyai: { available: stt }, whisper: { available: false } },
+          tts: { azure: { available: tts }, openai: { available: false }, elevenlabs: { available: false } },
+        });
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/voice/status");
+        const json = res.ok ? await res.json() : null;
         if (!cancelled) setData(json);
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setData(null);
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
