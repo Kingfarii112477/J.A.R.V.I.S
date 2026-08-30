@@ -233,11 +233,11 @@ export function SettingsPanel() {
               </SettingRow>
 
               <p className="font-technical mt-6 mb-1 text-[10px] tracking-[0.15em] text-text-muted">
-                HANDS-FREE (ANDROID APP ONLY)
+                HANDS-FREE
               </p>
               <SettingRow
                 label="Continuous Listening"
-                description='Runs an on-device wake-word engine so "Jarvis" works without touching the screen. Standby audio never leaves your device. Requires the native Android app.'
+                description='Runs an on-device wake-word engine so "Hey JARVIS" works without touching the screen. Standby audio never leaves your device — only the command you speak afterwards is sent for processing.'
               >
                 <ToggleSwitch
                   checked={settings.continuousListening}

@@ -20,10 +20,9 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import com.jarvis.aios.BuildConfig
 import com.jarvis.aios.MainActivity
 import com.jarvis.aios.R
-import com.jarvis.aios.wake.PorcupineWakeWordEngine
+import com.jarvis.aios.wake.OpenWakeWordEngine
 import com.jarvis.aios.wake.WakeWordEngine
 
 /**
@@ -97,7 +96,14 @@ class ContinuousListeningService : Service() {
         )
             private set
 
-        fun isConfigured(): Boolean = BuildConfig.PICOVOICE_ACCESS_KEY.isNotBlank()
+        /**
+         * openWakeWord's models ship inside the APK and need no account,
+         * key, or network, so wake-word detection is always configured on
+         * every build. Kept as a function (rather than inlining `true`)
+         * because callers legitimately ask this question, and a future
+         * engine swap could reintroduce a real condition here.
+         */
+        fun isConfigured(): Boolean = true
     }
 
     /** How the service talks to the web layer. Every callback is a
@@ -113,6 +119,11 @@ class ContinuousListeningService : Service() {
     private var focusRequest: AudioFocusRequest? = null
     private var batterySaver = true
     private var sensitivity = 0.5f
+    /** Minimum gap between accepted detections. One spoken "Hey JARVIS"
+     * stays inside the classifier's ~3s context for dozens of consecutive
+     * 80ms frames, so without this a single utterance fires repeatedly.
+     * Mirrors VOICE_DEFAULTS.wakeWordDebounceMs on the web side. */
+    private var wakeDebounceMs = 2000L
     private var registeredReceiver: BroadcastReceiver? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -185,8 +196,8 @@ class ContinuousListeningService : Service() {
             return
         }
 
-        val active = engine ?: PorcupineWakeWordEngine
-            .create(this, BuildConfig.PICOVOICE_ACCESS_KEY, sensitivity)
+        val active = engine ?: OpenWakeWordEngine
+            .create(this, sensitivity, wakeDebounceMs)
             .also { engine = it }
 
         if (!active.isAvailable()) {
@@ -428,8 +439,8 @@ class ContinuousListeningService : Service() {
         val next = ListeningSnapshot(
             state = state,
             suspendReason = reason,
-            engineId = engine?.id ?: if (isConfigured()) "porcupine" else "unavailable",
-            available = engine?.isAvailable() ?: isConfigured(),
+            engineId = engine?.id ?: "openwakeword",
+            available = engine?.isAvailable() ?: true,
             detail = detail,
         )
         snapshot = next

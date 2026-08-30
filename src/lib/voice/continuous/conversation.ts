@@ -52,7 +52,7 @@ export const CONVERSATION_PHASE_DETAIL: Record<ConversationPhase, string> = {
   OFFLINE: "No network — voice commands need a connection.",
   UNAVAILABLE: "Hands-free listening isn't available on this device.",
   SUSPENDED: "Standby listening is paused.",
-  STANDBY: 'Listening for "Jarvis" on this device only.',
+  STANDBY: 'Listening for "Hey JARVIS" on this device only.',
   WAKE_DETECTED: "Wake word heard.",
   LISTENING: "Listening to your command.",
   THINKING: "Working on it.",

@@ -1,7 +1,9 @@
 import { Capacitor } from "@capacitor/core";
 import type { ContinuousListeningProvider } from "./types";
 import { nativeContinuousProvider } from "./native";
+import { webContinuousProvider } from "./web";
 import { unavailableContinuousProvider } from "./unavailable";
+import { OpenWakeWordWebEngine } from "@/lib/voice/wake/openWakeWordWeb";
 
 let cached: ContinuousListeningProvider | null = null;
 
@@ -17,7 +19,19 @@ let cached: ContinuousListeningProvider | null = null;
  */
 export function getContinuousListeningProvider(): ContinuousListeningProvider {
   if (cached) return cached;
-  cached = Capacitor.isNativePlatform() ? nativeContinuousProvider : unavailableContinuousProvider;
+  if (Capacitor.isNativePlatform()) {
+    // Native Android: the foreground service owns the microphone and can
+    // keep listening with the app backgrounded.
+    cached = nativeContinuousProvider;
+  } else if (OpenWakeWordWebEngine.isSupported()) {
+    // Browser: real openWakeWord detection in the tab. Genuinely works,
+    // but only while the page is alive — never presented as background
+    // listening.
+    cached = webContinuousProvider;
+  } else {
+    // No secure context, or no microphone APIs at all.
+    cached = unavailableContinuousProvider;
+  }
   return cached;
 }
 

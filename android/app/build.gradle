@@ -27,16 +27,6 @@ def releaseKeyPassword = resolveSigningValue("ANDROID_KEY_PASSWORD", "keyPasswor
 def releaseStoreFile = file(resolveSigningValue("ANDROID_KEYSTORE_PATH", "storeFile") ?: "release.keystore")
 def hasReleaseSigning = releaseStorePassword && releaseKeyAlias && releaseKeyPassword && releaseStoreFile.exists()
 
-// Picovoice AccessKey for the on-device Porcupine wake-word engine.
-// Resolved exactly like the signing credentials above — env var first, then
-// an optional gitignored android/keystore.properties — and NEVER hardcoded.
-// An empty value is a fully supported configuration: the native
-// WakeWordEngine reports itself unavailable and the app honestly says
-// wake-word detection is unconfigured rather than faking it. Get a free key
-// at https://console.picovoice.ai (detection itself runs entirely offline;
-// the key is validated locally at engine init).
-def picovoiceAccessKey = resolveSigningValue("PICOVOICE_ACCESS_KEY", "picovoiceAccessKey") ?: ""
-
 android {
     namespace = "com.jarvis.aios"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -54,7 +44,17 @@ android {
         versionCode 100
         versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField "String", "PICOVOICE_ACCESS_KEY", "\"${picovoiceAccessKey}\""
+        ndk {
+            // ONNX Runtime ships a large native library per ABI (~31 MB
+            // arm64, ~22 MB armv7, ~37 MB EACH for x86/x86_64). Shipping
+            // all four made the APK 136 MB, of which 74 MB was x86 —
+            // architectures no real Android phone uses, only emulators.
+            // Restricting to the two ARM ABIs takes the APK to ~62 MB;
+            // via the AAB, Play delivers just one ABI so a user downloads
+            // ~31 MB. Re-add 'x86_64' here if you need to run the app on
+            // an x86 emulator.
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -78,11 +78,6 @@ android {
             signingConfig hasReleaseSigning ? signingConfigs.release : null
         }
     }
-    buildFeatures {
-        // Required for the PICOVOICE_ACCESS_KEY buildConfigField above (AGP 8
-        // no longer generates BuildConfig unless asked).
-        buildConfig true
-    }
 }
 
 repositories {
@@ -97,10 +92,11 @@ dependencies {
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
-    // On-device wake-word detection (Porcupine). Ships a built-in "Jarvis"
-    // keyword and runs entirely offline — no audio ever leaves the device
-    // during standby listening. See ContinuousListeningService.kt.
-    implementation "ai.picovoice:porcupine-android:$porcupineVersion"
+    // On-device "Hey JARVIS" wake-word detection: openWakeWord's ONNX
+    // model chain (bundled in assets/wakeword/) run through ONNX Runtime.
+    // Fully offline — no audio leaves the device during standby, and no
+    // account or API key is required. See wake/OpenWakeWordEngine.kt.
+    implementation "com.microsoft.onnxruntime:onnxruntime-android:$onnxRuntimeVersion"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"

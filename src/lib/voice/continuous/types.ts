@@ -66,7 +66,12 @@ export interface ContinuousListeningHandlers {
 }
 
 export interface ContinuousListeningProvider {
-  id: "native" | "unavailable";
+  /** "native" = Android foreground service; "web" = real
+   * openWakeWord detection in the browser tab; "unavailable" = no
+   * detection possible here. Distinguished because the three have
+   * genuinely different capabilities (only "native" survives
+   * backgrounding) and the UI must not imply otherwise. */
+  id: "native" | "web" | "unavailable";
 
   /** Whether this build/platform can do wake-word detection at all —
    * checked before offering the feature, so the UI never advertises

@@ -16,6 +16,8 @@ ext {
     androidxJunitVersion = '1.3.0'
     androidxEspressoCoreVersion = '3.7.0'
     cordovaAndroidVersion = '14.0.1'
-    // On-device wake-word engine (built-in "Jarvis" keyword).
-    porcupineVersion = '4.0.2'
+    // ONNX Runtime — runs the openWakeWord model chain on-device for
+    // "Hey JARVIS" detection. Same major version as the web build's
+    // onnxruntime-web, so both platforms run identical graphs.
+    onnxRuntimeVersion = '1.29.0'
 }

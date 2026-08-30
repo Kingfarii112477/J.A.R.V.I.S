@@ -14,6 +14,23 @@ vi.mock("@capacitor/core", () => ({
 }));
 
 import { Capacitor } from "@capacitor/core";
+import { OpenWakeWordWebEngine } from "@/lib/voice/wake/openWakeWordWeb";
+
+vi.mock("@/lib/voice/wake/openWakeWordWeb", () => ({
+  OpenWakeWordWebEngine: Object.assign(
+    class {
+      isRunning = false;
+      setThreshold() {}
+      setDebounce() {}
+      async start() {
+        return true;
+      }
+      async stop() {}
+      async release() {}
+    },
+    { isSupported: vi.fn(() => false) }
+  ),
+}));
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -21,10 +38,22 @@ afterEach(() => {
 });
 
 describe("getContinuousListeningProvider", () => {
-  it("returns the unavailable provider outside the native Android app", async () => {
+  it("falls back to the unavailable provider when the browser can't support detection", async () => {
+    // e.g. an http:// page, where getUserMedia doesn't exist at all.
     vi.mocked(Capacitor.isNativePlatform).mockReturnValue(false);
+    vi.mocked(OpenWakeWordWebEngine.isSupported).mockReturnValue(false);
     const { getContinuousListeningProvider } = await import("./manager");
     expect(getContinuousListeningProvider().id).toBe("unavailable");
+  });
+
+  it("uses the real in-browser openWakeWord provider on a supported page", async () => {
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(false);
+    vi.mocked(OpenWakeWordWebEngine.isSupported).mockReturnValue(true);
+    const { getContinuousListeningProvider } = await import("./manager");
+    const provider = getContinuousListeningProvider();
+    expect(provider.id).toBe("web");
+    const availability = await provider.checkAvailability();
+    expect(availability.engineId).toBe("openwakeword-web");
   });
 
   it("returns the native provider inside the native Android app", async () => {
@@ -35,6 +64,7 @@ describe("getContinuousListeningProvider", () => {
 
   it("caches rather than re-checking on every call", async () => {
     vi.mocked(Capacitor.isNativePlatform).mockReturnValue(false);
+    vi.mocked(OpenWakeWordWebEngine.isSupported).mockReturnValue(false);
     const { getContinuousListeningProvider } = await import("./manager");
     getContinuousListeningProvider();
     getContinuousListeningProvider();
@@ -44,6 +74,7 @@ describe("getContinuousListeningProvider", () => {
 
   it("resetContinuousListeningProviderCache forces a fresh read", async () => {
     vi.mocked(Capacitor.isNativePlatform).mockReturnValue(false);
+    vi.mocked(OpenWakeWordWebEngine.isSupported).mockReturnValue(false);
     const { getContinuousListeningProvider, resetContinuousListeningProviderCache } = await import("./manager");
     expect(getContinuousListeningProvider().id).toBe("unavailable");
 
