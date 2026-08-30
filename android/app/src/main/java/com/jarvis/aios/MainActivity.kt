@@ -1,6 +1,7 @@
 package com.jarvis.aios
 
 import com.getcapacitor.BridgeActivity
+import com.jarvis.aios.listening.ContinuousListeningPlugin
 
 /**
  * No WebChromeClient / onPermissionRequest override lives here on
@@ -21,5 +22,10 @@ class MainActivity : BridgeActivity() {
         // Must run before super.onCreate() per Capacitor's plugin
         // registration contract.
         registerPlugin(DeviceCapabilityPlugin::class.java)
+        // Hands-free continuous listening. The service this plugin talks
+        // to deliberately outlives the WebView, so the plugin re-attaches
+        // to the already-running service on every Activity recreation
+        // rather than restarting listening from scratch.
+        registerPlugin(ContinuousListeningPlugin::class.java)
     }
 }

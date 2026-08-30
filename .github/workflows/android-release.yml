@@ -107,6 +107,10 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # Optional: enables the on-device Porcupine wake word. Absent, the
+          # build still succeeds and continuous listening reports wake-word
+          # detection as unconfigured rather than faking it.
+          PICOVOICE_ACCESS_KEY: ${{ secrets.PICOVOICE_ACCESS_KEY }}
 
       - name: Build release AAB
         working-directory: android
@@ -115,6 +119,10 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # Optional: enables the on-device Porcupine wake word. Absent, the
+          # build still succeeds and continuous listening reports wake-word
+          # detection as unconfigured rather than faking it.
+          PICOVOICE_ACCESS_KEY: ${{ secrets.PICOVOICE_ACCESS_KEY }}
 
       - name: Verify artifacts were produced
         run: |

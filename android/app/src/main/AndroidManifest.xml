@@ -21,6 +21,18 @@
             </intent-filter>
         </activity>
 
+        <!--
+          Hands-free continuous listening. foregroundServiceType="microphone"
+          is mandatory from Android 14 and correct from 10 onward: it is what
+          makes the ongoing microphone use visible to the user in system UI,
+          which is exactly the transparency an always-ready assistant owes
+          them. Not exported — only this app may start it.
+        -->
+        <service
+            android:name=".listening.ContinuousListeningService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -46,6 +58,18 @@
 
     <!-- Voice — explicit runtime permission, never silently activated -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Hands-free continuous listening (ContinuousListeningService).
+         FOREGROUND_SERVICE_MICROPHONE is the Android 14+ companion to the
+         service's foregroundServiceType above. Both are required for a
+         *visible*, user-revocable always-listening service; neither grants
+         any additional access beyond the RECORD_AUDIO the user already
+         approves at runtime. Deliberately NOT declared: READ_PHONE_STATE —
+         call interruptions are detected through audio focus instead, which
+         needs no privacy-sensitive permission (see
+         ContinuousListeningService.focusListener). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <!-- Camera / location — declared for future capabilities per the Phase 6
          spec ("implement where technically and legally supported"); the app

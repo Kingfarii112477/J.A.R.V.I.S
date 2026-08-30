@@ -61,6 +61,18 @@ export interface JarvisEventPayloads {
   /** Phase 6 — the foreground wake-word listener (lib/voice/wakeWord.ts)
    * heard the wake phrase and is handing off to real capture. */
   "voice.wakeWordDetected": { sessionId: string };
+  /** Phase 7 — hands-free continuous listening (lib/voice/continuous/).
+   * `source` distinguishes the real native on-device engine from the
+   * web's foreground-only keyword spotter, so observability never
+   * conflates the two very different capabilities. */
+  "voice.standbyStarted": { source: "native" | "web" };
+  "voice.standbyStopped": { reason: string };
+  "voice.activeListeningStarted": { sessionId: string; trigger: "wake-word" | "follow-up" | "manual" };
+  "voice.activeListeningEnded": { sessionId: string; reason: "submitted" | "silence" | "cancelled" | "error" };
+  /** A natural continuation window opened/closed — the user may speak
+   * again without repeating the wake word. */
+  "voice.followUpOpened": { sessionId: string; timeoutMs: number };
+  "voice.followUpClosed": { sessionId: string; used: boolean };
 
   "tool.requested": { toolName: string; callId: string; params: unknown; sessionId: string };
   "tool.permission_required": { toolName: string; callId: string; sessionId: string };

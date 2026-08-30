@@ -8,6 +8,8 @@ import { getSTTProvider, requestMicrophonePermission } from "@/lib/voice/stt";
 import { isSilentTick, shouldAutoStopForSilence } from "@/lib/voice/vad";
 import { deriveVoiceState } from "@/lib/voice/state";
 import { getWakeWordProvider } from "@/lib/voice/wakeWord";
+import { useContinuousListening } from "@/hooks/useContinuousListening";
+import { deriveConversationPhase } from "@/lib/voice/continuous";
 import { eventBus } from "@/lib/events/bus";
 import { getSessionId } from "@/lib/utils/id";
 import { useSound } from "@/hooks/useSound";
@@ -21,7 +23,7 @@ const MS_PER_VAD_TICK = 33;
 
 export function useVoice() {
   const { state, goListening, goIdle, goError, goProcessing } = useJarvisState();
-  const { sendMessage, stopSpeaking } = useMessagePipeline();
+  const { sendMessage, stopSpeaking, speak, generating } = useMessagePipeline();
   const messages = useJarvisStore((s) => s.messages);
   const sttProvider = useJarvisStore((s) => s.settings.sttProvider);
   const silenceTimeoutMs = useJarvisStore((s) => s.settings.silenceTimeoutMs);
@@ -31,6 +33,7 @@ export function useVoice() {
   const activeToolCalls = useJarvisStore((s) => s.activeToolCalls);
   const pushToast = useJarvisStore((s) => s.pushToast);
   const setMicPermissionDenied = useJarvisStore((s) => s.setMicPermissionDenied);
+  const networkOnline = useJarvisStore((s) => s.networkOnline);
   const playSound = useSound();
   const sessionId = useRef(getSessionId());
 
@@ -382,6 +385,34 @@ export function useVoice() {
     return () => provider.stop();
   }, [wakeWordMode, permission, state, startListening]);
 
+  // Hands-free continuous listening (Phase 7). Deliberately fed the SAME
+  // startListening/speak this hook already uses for tapped turns — a
+  // wake-word turn and a tapped turn run the identical pipeline, so
+  // there is no second capture path and no second brain.
+  const startListeningRef = useRef(startListening);
+  useEffect(() => {
+    startListeningRef.current = startListening;
+  }, [startListening]);
+  const continuous = useContinuousListening({
+    startListening: useCallback(() => void startListeningRef.current(), []),
+    speak,
+    busy: generating,
+    sessionId: sessionId.current,
+  });
+
+  const conversationPhase = useMemo(
+    () =>
+      deriveConversationPhase({
+        jarvisState: state,
+        listening: continuous.snapshot,
+        followUpOpen: continuous.followUpOpen,
+        activeToolCalls,
+        online: networkOnline,
+        justWoke: continuous.justWoke,
+      }),
+    [state, continuous.snapshot, continuous.followUpOpen, continuous.justWoke, activeToolCalls, networkOnline]
+  );
+
   return {
     state,
     voiceState,
@@ -397,5 +428,7 @@ export function useVoice() {
     stopAndSubmit,
     cancel,
     stopSpeaking,
+    conversationPhase,
+    continuous,
   };
 }

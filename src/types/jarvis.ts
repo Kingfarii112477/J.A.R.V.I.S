@@ -193,6 +193,32 @@ export interface JarvisSettings {
    * it is never a background/always-listening service. */
   wakeWordMode: "push-to-talk" | "click-to-talk" | "wake-word";
 
+  /** Phase 7 — hands-free continuous listening. These only take effect
+   * inside the native Android app, where a real foreground service runs
+   * an on-device wake-word engine (see lib/voice/continuous/ and
+   * android/.../listening/). In a browser they stay configurable but the
+   * provider honestly reports itself unavailable rather than pretending.
+   *
+   * Master switch. Off by default: an always-armed microphone is a real
+   * privacy commitment and must be an explicit, deliberate opt-in, never
+   * something a user discovers after the fact. */
+  continuousListening: boolean;
+  /** Whether a natural continuation is accepted after a response without
+   * repeating the wake word ("now only show the newest ones"). */
+  followUpListening: boolean;
+  /** How long that continuation window stays open, in milliseconds. */
+  followUpTimeoutMs: number;
+  /** Whether spoken responses are allowed while the device is locked.
+   * Off by default — a locked phone shouldn't read private content
+   * aloud to whoever is nearby. */
+  lockScreenVoiceResponses: boolean;
+  /** Suspend standby listening when the battery is critically low. */
+  voiceBatterySaver: boolean;
+  /** 0..1, mapped straight onto the wake-word engine's real sensitivity
+   * parameter — higher catches more genuine utterances at the cost of
+   * more false triggers. */
+  wakeWordSensitivity: number;
+
   /** 0 Manual / 1 Assisted / 2 Supervised (default) / 3 Delegated /
    * 4 Controlled Autonomous — see lib/autonomy/autonomyLevels.ts. Governs
    * every autonomous mission; never changed automatically. */

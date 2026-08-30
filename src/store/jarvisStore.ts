@@ -77,6 +77,16 @@ export const defaultSettings: JarvisSettings = {
   voiceInterruptEnabled: true,
   voiceConfirmationsEnabled: true,
   wakeWordMode: "click-to-talk",
+
+  // Phase 7 — hands-free. Off by default on purpose: an always-armed
+  // microphone must be an explicit opt-in, never a default a user
+  // discovers later.
+  continuousListening: false,
+  followUpListening: true,
+  followUpTimeoutMs: 6000,
+  lockScreenVoiceResponses: false,
+  voiceBatterySaver: true,
+  wakeWordSensitivity: 0.5,
 };
 
 export const defaultSubsystems: Subsystem[] = [

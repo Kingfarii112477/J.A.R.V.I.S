@@ -232,6 +232,75 @@ export function SettingsPanel() {
                 />
               </SettingRow>
 
+              <p className="font-technical mt-6 mb-1 text-[10px] tracking-[0.15em] text-text-muted">
+                HANDS-FREE (ANDROID APP ONLY)
+              </p>
+              <SettingRow
+                label="Continuous Listening"
+                description='Runs an on-device wake-word engine so "Jarvis" works without touching the screen. Standby audio never leaves your device. Requires the native Android app.'
+              >
+                <ToggleSwitch
+                  checked={settings.continuousListening}
+                  onChange={(v) => set("continuousListening", v)}
+                  label="Continuous listening"
+                />
+              </SettingRow>
+              <SettingRow
+                label="Follow-up Listening"
+                description="Keeps listening briefly after a response so you can continue naturally without repeating the wake word"
+              >
+                <ToggleSwitch
+                  checked={settings.followUpListening}
+                  onChange={(v) => set("followUpListening", v)}
+                  label="Follow-up listening"
+                />
+              </SettingRow>
+              <SettingRow label="Follow-up Window" description="How long that continuation window stays open">
+                <Select
+                  value={String(settings.followUpTimeoutMs)}
+                  onChange={(v) => set("followUpTimeoutMs", Number(v))}
+                  options={[
+                    { value: "4000", label: "4 seconds" },
+                    { value: "6000", label: "6 seconds" },
+                    { value: "10000", label: "10 seconds" },
+                  ]}
+                />
+              </SettingRow>
+              <SettingRow
+                label="Lock Screen Voice Responses"
+                description="Off by default — a locked device shouldn't read private content aloud to whoever is nearby"
+              >
+                <ToggleSwitch
+                  checked={settings.lockScreenVoiceResponses}
+                  onChange={(v) => set("lockScreenVoiceResponses", v)}
+                  label="Lock screen voice responses"
+                />
+              </SettingRow>
+              <SettingRow
+                label="Battery Saver"
+                description="Pause standby listening when the battery is critically low and not charging"
+              >
+                <ToggleSwitch
+                  checked={settings.voiceBatterySaver}
+                  onChange={(v) => set("voiceBatterySaver", v)}
+                  label="Voice battery saver"
+                />
+              </SettingRow>
+              <SettingRow
+                label="Microphone Sensitivity"
+                description="Higher catches more real utterances but triggers more false wakes"
+              >
+                <Select
+                  value={String(settings.wakeWordSensitivity)}
+                  onChange={(v) => set("wakeWordSensitivity", Number(v))}
+                  options={[
+                    { value: "0.3", label: "Low" },
+                    { value: "0.5", label: "Balanced" },
+                    { value: "0.7", label: "High" },
+                  ]}
+                />
+              </SettingRow>
+
               <p className="font-technical mt-6 mb-1 text-[10px] tracking-[0.15em] text-text-muted">LANGUAGE</p>
               <SettingRow label="Auto Language Detection" description="Detect English / Urdu / Hindi / Roman Urdu / Hinglish automatically">
                 <ToggleSwitch checked={settings.autoLanguageDetection} onChange={(v) => set("autoLanguageDetection", v)} label="Auto language detection" />
