@@ -1,5 +1,6 @@
 package com.jarvis.aios
 
+import android.os.Bundle
 import com.getcapacitor.BridgeActivity
 import com.jarvis.aios.credentials.SecureCredentialsPlugin
 import com.jarvis.aios.listening.ContinuousListeningPlugin
@@ -19,6 +20,17 @@ import com.jarvis.aios.listening.ContinuousListeningPlugin
  * path for the same one capability.
  */
 class MainActivity : BridgeActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Added after the Bridge exists; BridgeWebViewClient reads this
+        // list at callback time, so registering here is in time. Without
+        // it, Capacitor's default onRenderProcessGone returns false and
+        // Android kills the whole app process the moment the WebView
+        // renderer dies — which looks exactly like the app closing itself
+        // for no reason.
+        bridge.addWebViewListener(WebViewRecoveryListener(this))
+    }
+
     init {
         // Must run before super.onCreate() per Capacitor's plugin
         // registration contract.
