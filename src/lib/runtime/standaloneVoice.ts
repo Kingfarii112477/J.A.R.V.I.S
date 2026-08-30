@@ -25,6 +25,42 @@ export type StandaloneVoiceOutcome<T> =
   | { status: "unavailable"; message: string }
   | { status: "error"; message: string };
 
+/** Decodes a base64 payload into bytes without going through a data: URL. */
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64.replace(/\s/g, ""));
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+/**
+ * Fetches a binary body in the Android app without letting CapacitorHttp
+ * mangle it.
+ *
+ * The patched fetch never sets a responseType, so the native layer falls
+ * to its TEXT default and returns `readStreamAsString(stream)` — running
+ * MP3 bytes through a String decoder, which replaces every byte that
+ * isn't valid UTF-8 and destroys the audio. Asking CapacitorHttp directly
+ * for responseType "blob" makes it base64 the stream instead, which
+ * survives the bridge intact.
+ */
+async function fetchBinaryStandalone(
+  url: string,
+  init: { method: string; headers: Record<string, string>; body?: string }
+): Promise<{ ok: boolean; status: number; bytes?: Uint8Array }> {
+  const { CapacitorHttp } = await import("@capacitor/core");
+  const res = await CapacitorHttp.request({
+    url,
+    method: init.method,
+    headers: init.headers,
+    data: init.body,
+    responseType: "blob",
+  });
+  const ok = res.status >= 200 && res.status < 300;
+  if (!ok) return { ok, status: res.status };
+  return { ok, status: res.status, bytes: base64ToBytes(String(res.data ?? "")) };
+}
+
 function escapeSsml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -52,24 +88,25 @@ export async function synthesizeStandalone(
   const locale = localeForAzureVoice(voice);
   const ssml = `<speak version="1.0" xml:lang="${locale}"><voice name="${voice}">${escapeSsml(text)}</voice></speak>`;
 
+  const url = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
+  const headers = {
+    "Ocp-Apim-Subscription-Key": key,
+    "Content-Type": "application/ssml+xml",
+    "X-Microsoft-OutputFormat": "audio-16khz-128kbitrate-mono-mp3",
+    "User-Agent": "jarvis-aios",
+  };
+
   try {
-    const res = await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
-      method: "POST",
-      headers: {
-        "Ocp-Apim-Subscription-Key": key,
-        "Content-Type": "application/ssml+xml",
-        "X-Microsoft-OutputFormat": "audio-16khz-128kbitrate-mono-mp3",
-        "User-Agent": "jarvis-aios",
-      },
-      body: ssml,
-    });
+    const res = await fetchBinaryStandalone(url, { method: "POST", headers, body: ssml });
     if (res.status === 401 || res.status === 403) {
       return { status: "error", message: "Azure rejected the speech key — check it in Settings → Voice." };
     }
-    if (!res.ok) {
+    if (!res.ok || !res.bytes) {
       return { status: "error", message: `Speech synthesis failed (${res.status}).` };
     }
-    return { status: "ok", value: await res.blob() };
+    // Typed as BlobPart explicitly: the returned buffer may be a
+    // SharedArrayBuffer-backed view in some engines, which Blob rejects.
+    return { status: "ok", value: new Blob([res.bytes as BlobPart], { type: "audio/mpeg" }) };
   } catch (err) {
     return {
       status: "error",
@@ -104,10 +141,25 @@ export async function transcribeStandalone(
   }
 
   try {
+    // Sent as a File, NOT the raw Blob, and this is not cosmetic. In the
+    // Android app CapacitorHttp patches fetch and routes the body through
+    // its own convertBody(), which handles ReadableStream, Uint8Array,
+    // URLSearchParams, FormData and File — but has no Blob branch, so a
+    // Blob falls through to its final `return { data: body, type: "json" }`.
+    // The recording is then JSON-serialised (a Blob stringifies to "{}")
+    // and posted as application/json, which is exactly what AssemblyAI
+    // reports back as "Transcoding failed. File type application/json".
+    // The audio never leaves the device. File takes the base64 path
+    // instead, which preserves the bytes and sends the real content type.
+    const file =
+      audio instanceof File
+        ? audio
+        : new File([audio], "recording.webm", { type: audio.type || "audio/webm" });
+
     const upload = await fetch("https://api.assemblyai.com/v2/upload", {
       method: "POST",
       headers: { authorization: key },
-      body: audio,
+      body: file,
       signal,
     });
     if (upload.status === 401) {

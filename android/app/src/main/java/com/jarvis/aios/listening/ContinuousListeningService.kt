@@ -158,7 +158,32 @@ class ContinuousListeningService : Service() {
             else -> {
                 sensitivity = intent?.getFloatExtra(EXTRA_SENSITIVITY, sensitivity) ?: sensitivity
                 batterySaver = intent?.getBooleanExtra(EXTRA_BATTERY_SAVER, batterySaver) ?: batterySaver
-                startForegroundSafely()
+                // The permission is checked BEFORE going foreground, not
+                // after. A microphone foreground service started without
+                // RECORD_AUDIO throws on Android 14+, and a service started
+                // via startForegroundService() that never reaches
+                // startForeground() is killed by the system with
+                // ForegroundServiceDidNotStartInTimeException — which the
+                // app cannot catch. Attempting it first and discovering the
+                // missing permission afterwards is therefore a guaranteed
+                // process death, not a recoverable error.
+                if (!hasMicPermission()) {
+                    publish(
+                        ListeningState.SUSPENDED,
+                        SuspendReason.MICROPHONE_UNAVAILABLE,
+                        "Microphone access hasn't been granted, so hands-free listening can't start.",
+                    )
+                    listener?.onError("Microphone access is needed for hands-free listening. Grant it in the app's permissions.")
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                if (!startForegroundSafely()) {
+                    // Stopping is not tidiness — it is what cancels the
+                    // system's "must reach foreground" deadline. Leaving
+                    // the service alive here is what kills the app.
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
                 beginStandby()
             }
         }
@@ -355,7 +380,9 @@ class ContinuousListeningService : Service() {
 
     // ---- Foreground notification -------------------------------------------
 
-    private fun startForegroundSafely() {
+    /** @return true only if the service genuinely reached the foreground.
+     * The caller MUST stop the service when this returns false. */
+    private fun startForegroundSafely(): Boolean {
         val notification = buildNotification()
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -367,10 +394,14 @@ class ContinuousListeningService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+            return true
         } catch (e: Exception) {
             // Android 14+ throws if a mic foreground service is started
             // while the app is in the background. That is a real platform
-            // restriction, not something to work around — report it.
+            // restriction, not something to work around — report it, and
+            // tell the caller to stop the service. Swallowing this and
+            // carrying on leaves the service started but not foregrounded,
+            // which the system punishes ~5s later by killing the process.
             Log.w(TAG, "Could not start foreground service", e)
             publish(
                 ListeningState.SUSPENDED,
@@ -378,6 +409,7 @@ class ContinuousListeningService : Service() {
                 "Android blocked starting the listening service from the background. Open J.A.R.V.I.S and enable it again.",
             )
             listener?.onError("Android blocked starting background listening. Open the app and re-enable Continuous Listening.")
+            return false
         }
     }
 
