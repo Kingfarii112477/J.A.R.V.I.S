@@ -5,6 +5,7 @@ import { useJarvisStore } from "@/store/jarvisStore";
 import { useJarvisState } from "@/hooks/useJarvisState";
 import { useMessagePipeline } from "@/hooks/useMessagePipeline";
 import { getSTTProvider, requestMicrophonePermission } from "@/lib/voice/stt";
+import { isStandalone } from "@/lib/runtime/standalone";
 import { isSilentTick, shouldAutoStopForSilence } from "@/lib/voice/vad";
 import { deriveVoiceState } from "@/lib/voice/state";
 import { getWakeWordProvider } from "@/lib/voice/wakeWord";
@@ -163,7 +164,14 @@ export function useVoice() {
     setRequestingPermission(false);
     if (!permissionResult.granted) {
       const messages: Record<typeof permissionResult.reason, string> = {
-        denied: "Microphone access was denied. Enable it in your browser's site settings.",
+        // Wording differs by platform because the remedy does. In the
+        // Android app there is no "site settings", and once Android has
+        // recorded two denials it stops showing the permission dialog
+        // altogether — retrying does nothing, so the message has to point
+        // at the only thing that still works.
+        denied: isStandalone()
+          ? "Microphone access was denied. Open app settings and allow Microphone — Android will not ask again from inside the app."
+          : "Microphone access was denied. Enable it in your browser's site settings.",
         unavailable: "No microphone was found on this device. Voice input is unavailable — text chat still works.",
         error: "Could not access the microphone. Voice input is temporarily unavailable.",
       };

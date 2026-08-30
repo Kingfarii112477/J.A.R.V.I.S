@@ -12,6 +12,7 @@ import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
+import android.provider.Settings
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Build
@@ -313,5 +314,28 @@ class DeviceCapabilityPlugin : Plugin() {
             ret.put("reason", e.message ?: "Notification permission denied.")
         }
         call.resolve(ret)
+    }
+
+    /**
+     * Opens this app's page in Android's system settings.
+     *
+     * Needed because once the microphone permission has been denied twice,
+     * Android stops showing the permission dialog entirely — asking again is
+     * a silent no-op. At that point the only way back is the app's settings
+     * page, so the UI needs to be able to send the user straight there
+     * instead of showing an error they have no way to act on.
+     */
+    @PluginMethod
+    fun openAppSettings(call: PluginCall) {
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", context.packageName, null)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            call.resolve(JSObject().put("opened", true))
+        } catch (e: Exception) {
+            call.resolve(JSObject().put("opened", false).put("reason", e.message ?: "unavailable"))
+        }
     }
 }

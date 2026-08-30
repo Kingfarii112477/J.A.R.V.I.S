@@ -41,8 +41,13 @@ android {
         // section: versionCode is a monotonically increasing integer Google
         // Play uses to order releases (bump on every release build);
         // versionName is the human-readable string shown to users.
-        versionCode 100
-        versionName "1.0.0"
+        // Bump BOTH on every build you intend to install. A rebuild that
+        // reuses the previous versionCode is indistinguishable from the old
+        // one at a glance, so "did my fix actually get installed?" becomes
+        // unanswerable — the app now shows this pair on the Settings screen
+        // so it can be checked against the build that produced the APK.
+        versionCode 101
+        versionName "1.0.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             // ONNX Runtime ships a large native library per ABI (~31 MB

@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
+import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -50,6 +51,10 @@ class SecureCredentialsPlugin : Plugin() {
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_TAG_BITS = 128
         private const val IV_BYTES = 12
+
+        /** Suffix for the companion "when was this saved" entry. Kept out
+         * of ALLOWED so it can never be mistaken for a credential. */
+        private const val TS_SUFFIX = "__savedAt"
 
         /** Exactly the credentials this app knows how to use. An
          * allow-list rather than arbitrary key/value storage, so a bug
@@ -150,6 +155,20 @@ class SecureCredentialsPlugin : Plugin() {
         call.resolve(out)
     }
 
+    /** When each stored credential was last written and verified. Lets the
+     * settings screen show whether what's on screen is fresh or stale
+     * without ever handling the values themselves. */
+    @PluginMethod
+    fun getSavedAt(call: PluginCall) {
+        val out = JSObject()
+        for (key in ALLOWED) {
+            if (!prefs().contains(key)) continue
+            val ts = prefs().getLong(key + TS_SUFFIX, 0L)
+            if (ts > 0L) out.put(key, ts)
+        }
+        call.resolve(out)
+    }
+
     @PluginMethod
     fun set(call: PluginCall) {
         val key = call.getString("key")
@@ -166,6 +185,7 @@ class SecureCredentialsPlugin : Plugin() {
                 call.reject("Could not remove that credential from storage.")
                 return
             }
+            prefs().edit().remove(key + TS_SUFFIX).commit()
             call.resolve(JSObject().put("saved", false).put("cleared", true))
             return
         }
@@ -192,7 +212,12 @@ class SecureCredentialsPlugin : Plugin() {
                 call.reject("The credential could not be read back after saving, so it was not kept. This device's keystore may be rejecting encryption.")
                 return
             }
-            call.resolve(JSObject().put("saved", true).put("cleared", false))
+            // Recorded only after the read-back verification above, so the
+            // timestamp the UI shows always refers to a value that was
+            // genuinely proven to be on disk.
+            val savedAt = System.currentTimeMillis()
+            prefs().edit().putLong(key + TS_SUFFIX, savedAt).commit()
+            call.resolve(JSObject().put("saved", true).put("cleared", false).put("savedAt", savedAt))
         } catch (e: Exception) {
             Log.w(TAG, "Failed to store credential", e)
             call.reject("Could not securely store that credential: ${e.message ?: "unknown error"}")
@@ -238,22 +263,22 @@ class SecureCredentialsPlugin : Plugin() {
     }
 
     /** Wipes every stored credential — the user-facing "forget my keys"
-     * action. */
+     * action. Reports per key rather than pass/fail for the batch, so a
+     * partial wipe names exactly what is still on the device instead of
+     * leaving the user to guess. */
     @PluginMethod
     fun clearAll(call: PluginCall) {
-        // The result is checked rather than discarded: "your keys are
-        // gone" is a security claim, and telling someone their secrets
-        // were erased when they are still on disk is the one outcome
-        // worse than failing outright.
-        if (!prefs().edit().clear().commit()) {
-            call.reject("The keys could not be removed — they are still stored on this device.")
-            return
+        val cleared = JSArray()
+        val failed = JSArray()
+        for (key in ALLOWED) {
+            if (!prefs().contains(key)) continue
+            // The result is checked rather than discarded, and the key is
+            // re-read afterwards: "your keys are gone" is a security claim,
+            // and telling someone their secrets were erased while they are
+            // still on disk is the one outcome worse than failing outright.
+            val ok = prefs().edit().remove(key).remove(key + TS_SUFFIX).commit()
+            if (ok && !prefs().contains(key)) cleared.put(key) else failed.put(key)
         }
-        val leftover = ALLOWED.count { prefs().contains(it) }
-        if (leftover > 0) {
-            call.reject("$leftover credential(s) could not be removed from this device.")
-            return
-        }
-        call.resolve()
+        call.resolve(JSObject().put("cleared", cleared).put("failed", failed))
     }
 }

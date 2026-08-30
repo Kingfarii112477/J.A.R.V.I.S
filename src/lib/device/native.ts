@@ -27,6 +27,7 @@ interface DeviceCapabilityPluginInterface {
   getDeviceStatus(): Promise<DeviceStatus>;
   requestNotificationPermission(): Promise<{ granted: boolean; reason?: string }>;
   postNotification(options: { title: string; body: string }): Promise<{ posted: boolean; reason?: string }>;
+  openAppSettings(): Promise<{ opened: boolean; reason?: string }>;
 }
 
 const DeviceCapability = registerPlugin<DeviceCapabilityPluginInterface>("DeviceCapability");
@@ -95,4 +96,5 @@ export const nativeDeviceProvider: DeviceCapabilityProvider = {
 
   postNotification: async (title, body): Promise<NotificationResult> =>
     safe(() => DeviceCapability.postNotification({ title, body }), { posted: false, reason: undefined }),
+  openAppSettings: async () => safe(() => DeviceCapability.openAppSettings(), { opened: false }),
 };

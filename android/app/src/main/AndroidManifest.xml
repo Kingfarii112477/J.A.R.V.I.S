@@ -60,6 +60,18 @@
 
     <!-- Voice — explicit runtime permission, never silently activated -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Required, and NOT optional, even though nothing here changes audio
+         settings. When the WebView calls getUserMedia({audio:true}),
+         Capacitor's BridgeWebChromeClient.onPermissionRequest() requests
+         MODIFY_AUDIO_SETTINGS *together with* RECORD_AUDIO, and grants the
+         WebView only if EVERY requested permission comes back granted.
+         Android denies an undeclared permission instantly without prompting,
+         so leaving this out makes that check fail forever: the microphone is
+         refused on first use, and granting Microphone in Android's app
+         settings does not help because this permission is still undeclared.
+         It is a normal (install-time) permission, so declaring it adds no
+         prompt and no new user-visible capability. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <!-- Hands-free continuous listening (ContinuousListeningService).
          FOREGROUND_SERVICE_MICROPHONE is the Android 14+ companion to the

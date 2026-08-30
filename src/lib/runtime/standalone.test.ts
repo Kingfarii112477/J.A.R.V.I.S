@@ -16,8 +16,36 @@ const set = vi.fn();
 const clearAll = vi.fn();
 const diagnose = vi.fn();
 
+const getSavedAt = vi.fn();
+const impl: Record<string, unknown> = { getAll, getStatus, set, clearAll, diagnose, getSavedAt };
+const registerSpy = vi.fn();
+
+/**
+ * Capacitor's registerPlugin does NOT return a plain object — it returns a
+ * Proxy whose `get` trap answers EVERY property with a callable, including
+ * `then`. That detail is the whole point of this mock: with a plain object
+ * the module under test passes trivially, while the real app hangs forever,
+ * because returning a thenable from an `async` function makes the runtime
+ * try to adopt it as a promise. Model the Proxy so the tests exercise what
+ * actually ships.
+ */
 vi.mock("@capacitor/core", () => ({
-  registerPlugin: () => ({ getAll, getStatus, set, clearAll, diagnose }),
+  registerPlugin: (...args: unknown[]) => (
+    registerSpy(...args),
+    new Proxy(
+      {},
+      {
+        get(_t, prop: string) {
+          if (prop === "$$typeof") return undefined;
+          if (prop in impl) return impl[prop];
+          // Every other property — `then` included — is a method that
+          // rejects, exactly as Capacitor does for an unimplemented one.
+          return () =>
+            Promise.reject(new Error(`"SecureCredentials.${prop}()" is not implemented on android`));
+        },
+      }
+    )
+  ),
 }));
 
 function runningOnDevice(native: boolean) {
@@ -38,6 +66,38 @@ beforeEach(() => {
 
 afterEach(() => {
   runningOnDevice(false);
+});
+
+describe("the plugin binding itself", () => {
+  it("settles instead of hanging when the plugin object is a Capacitor Proxy", async () => {
+    // Regression: `async function plugin() { return registerPlugin(...) }`
+    // returned the Proxy directly. Because the Proxy answers `.then` with a
+    // function, JS treated it as a thenable and called
+    // `proxy.then(resolve, reject)` — which Capacitor answers with "not
+    // implemented" and never invokes either callback. Every credential call
+    // then hung forever: no value, no error, nothing rendered, and the
+    // native plugin never reached. A timeout is the only way to assert
+    // "does not hang", since a hang produces no observable event.
+    const mod = await freshModule();
+    getStatus.mockResolvedValue({ GROQ_API_KEY: true });
+
+    const settled = await Promise.race([
+      mod.getCredentialStatus().then(() => "settled" as const),
+      new Promise<"hung">((r) => setTimeout(() => r("hung"), 1000)),
+    ]);
+    expect(settled).toBe("settled");
+  });
+
+  it("does not re-register the plugin on every call", async () => {
+    const mod = await freshModule();
+    getStatus.mockResolvedValue({});
+    await mod.getCredentialStatus();
+    await mod.getCredentialStatus();
+    await mod.getCredentialStatus();
+    // Capacitor warns "Cannot register plugins twice" and the repeated
+    // dynamic import is pure overhead on a path used by every provider call.
+    expect(registerSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("loadCredentials", () => {
@@ -123,16 +183,43 @@ describe("clearCredentials", () => {
     await expect(mod.clearCredentials()).rejects.toThrow("still stored on this device");
   });
 
+  it("reports per key which were removed and which survived", async () => {
+    const mod = await freshModule();
+    clearAll.mockResolvedValue({ cleared: ["GROQ_API_KEY"], failed: ["OPENAI_API_KEY"] });
+    await expect(mod.clearCredentials()).resolves.toEqual({
+      cleared: ["GROQ_API_KEY"],
+      failed: ["OPENAI_API_KEY"],
+    });
+  });
+
   it("drops the cache after a successful wipe", async () => {
     const mod = await freshModule();
     getAll.mockResolvedValue({ GROQ_API_KEY: "abc" });
     await mod.loadCredentials();
 
-    clearAll.mockResolvedValue(undefined);
+    clearAll.mockResolvedValue({ cleared: ["GROQ_API_KEY"], failed: [] });
     await mod.clearCredentials();
 
     getAll.mockResolvedValue({});
     expect(await mod.loadCredentials()).toEqual({});
+  });
+});
+
+describe("getCredentialTimestamps", () => {
+  it("returns the per-key save times", async () => {
+    const mod = await freshModule();
+    getSavedAt.mockResolvedValue({ GROQ_API_KEY: 1700000000000 });
+    expect(await mod.getCredentialTimestamps()).toEqual({ GROQ_API_KEY: 1700000000000 });
+  });
+
+  it("degrades to empty rather than taking the whole screen down", async () => {
+    // These timestamps are decoration on top of the real status answer.
+    // An APK whose native plugin predates getSavedAt must still render a
+    // working Provider Keys screen instead of reporting a healthy
+    // keystore as broken.
+    const mod = await freshModule();
+    getSavedAt.mockRejectedValue(new Error('"SecureCredentials.getSavedAt()" is not implemented'));
+    await expect(mod.getCredentialTimestamps()).resolves.toEqual({});
   });
 });
 

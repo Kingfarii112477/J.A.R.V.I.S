@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Mic, MicOff, AlertTriangle, MessageSquare, Square, X, Volume2, VolumeX } from "lucide-react";
+import { Mic, MicOff, AlertTriangle, MessageSquare, Square, X, Volume2, VolumeX, ExternalLink } from "lucide-react";
 import { JarvisCore } from "@/components/3d/JarvisCore";
 import { HudPanel } from "@/components/hud/HudPanel";
 import { VoiceVisualizer } from "./VoiceVisualizer";
@@ -17,6 +17,8 @@ import { LANGUAGE_LABELS } from "@/lib/voice/language/detect";
 import type { LanguageCode } from "@/lib/voice/language/types";
 import { textColor } from "@/components/common/StatusIndicator";
 import { cn } from "@/lib/utils/cn";
+import { isStandalone } from "@/lib/runtime/standalone";
+import { getDeviceCapabilityProvider } from "@/lib/device/manager";
 
 const PROVIDER_STATUS_LABEL: Record<VoiceProviderStatus, string> = { REAL: "CONNECTED", FALLBACK: "FALLBACK", UNAVAILABLE: "UNAVAILABLE" };
 const PROVIDER_STATUS_COLOR: Record<VoiceProviderStatus, string> = { REAL: "text-success", FALLBACK: "text-warning", UNAVAILABLE: "text-danger" };
@@ -228,6 +230,19 @@ export function VoiceInterface() {
           >
             {permission === "granted" ? "GRANTED" : permission === "denied" ? "DENIED" : "NOT REQUESTED"}
           </span>
+          {permission === "denied" && isStandalone() && (
+            // Retrying is pointless once Android has stopped prompting, so
+            // this offers the only action that can actually change the
+            // outcome rather than an error the user can't act on.
+            <button
+              type="button"
+              onClick={() => void getDeviceCapabilityProvider().openAppSettings()}
+              className="font-technical mt-1.5 inline-flex items-center gap-1 rounded-lg border border-danger/40 px-2 py-1 text-[9px] tracking-[0.1em] text-danger transition-colors hover:border-danger"
+            >
+              <ExternalLink size={10} aria-hidden />
+              APP SETTINGS
+            </button>
+          )}
         </HudPanel>
         <HudPanel className="flex flex-col items-center gap-1 py-4 text-center">
           <span className="font-technical text-[10px] tracking-[0.15em] text-text-secondary">STT PROVIDER</span>

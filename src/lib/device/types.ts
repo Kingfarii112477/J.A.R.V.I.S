@@ -74,6 +74,9 @@ export interface DeviceCapabilityProvider {
   getDeviceStatus(): Promise<DeviceStatus>;
   requestNotificationPermission(): Promise<PermissionResult>;
   postNotification(title: string, body: string): Promise<NotificationResult>;
+  /** Opens this app's page in Android system settings. The only route back
+   * once a permission has been denied twice and Android stops prompting. */
+  openAppSettings(): Promise<{ opened: boolean; reason?: string }>;
   // Microphone permission is deliberately NOT duplicated here — the
   // existing lib/voice/stt/browser.ts requestMicrophonePermission()
   // already calls getUserMedia(), which inside the native Android WebView

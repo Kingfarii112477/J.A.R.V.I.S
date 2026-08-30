@@ -52,9 +52,16 @@ export const CREDENTIAL_GROUPS: { label: string; keys: { key: CredentialKey; lab
 interface SecureCredentialsPlugin {
   getAll(): Promise<Record<string, string>>;
   getStatus(): Promise<Record<string, boolean>>;
-  set(options: { key: string; value: string }): Promise<{ saved: boolean; cleared: boolean }>;
-  clearAll(): Promise<void>;
+  set(options: { key: string; value: string }): Promise<{ saved: boolean; cleared: boolean; savedAt?: number }>;
+  getSavedAt(): Promise<Record<string, number>>;
+  clearAll(): Promise<ClearResult>;
   diagnose(): Promise<CredentialStoreHealth>;
+}
+
+/** Which keys the wipe actually removed, and which survived it. */
+export interface ClearResult {
+  cleared: string[];
+  failed: string[];
 }
 
 /** Result of round-tripping a probe value through the real store. */
@@ -85,11 +92,37 @@ export function isStandalone(): boolean {
   return Boolean(cap?.isNativePlatform?.());
 }
 
-/** Loads the plugin binding lazily, so @capacitor/core is only pulled in
- * when a credential is genuinely being read or written on-device. */
-async function plugin(): Promise<SecureCredentialsPlugin> {
-  const { registerPlugin } = await import("@capacitor/core");
-  return registerPlugin<SecureCredentialsPlugin>("SecureCredentials");
+let pluginRef: { api: SecureCredentialsPlugin } | null = null;
+let corePromise: Promise<typeof import("@capacitor/core")> | null = null;
+
+/**
+ * Loads the plugin binding lazily, so @capacitor/core is only pulled in
+ * when a credential is genuinely being read or written on-device.
+ *
+ * The `{ api }` wrapper is load-bearing, NOT a style choice. Capacitor's
+ * plugin object is a Proxy whose `get` trap answers EVERY property with
+ * a callable — including `then`. Returning it directly from an `async`
+ * function makes the runtime probe the value for `.then`, find one, and
+ * treat the proxy as a thenable to be adopted: it calls
+ * `proxy.then(resolve, reject)`, which Capacitor answers with "method
+ * not implemented" and never invokes either callback. The result is a
+ * promise that never settles — `await plugin()` hangs forever, so every
+ * credential read and write silently stops before reaching the native
+ * side, with no value, no error, and no way to tell from the UI.
+ *
+ * Returning a plain object that merely HOLDS the proxy sidesteps the
+ * thenable probe entirely. lib/device/native.ts and
+ * lib/voice/continuous/native.ts avoid this by calling registerPlugin at
+ * module scope, where no promise adoption happens.
+ */
+async function plugin(): Promise<{ api: SecureCredentialsPlugin }> {
+  if (pluginRef) return pluginRef;
+  // Memoised: registerPlugin warns and returns the same proxy when called
+  // twice, so repeating it just spams the console.
+  corePromise ??= import("@capacitor/core");
+  const { registerPlugin } = await corePromise;
+  pluginRef = { api: registerPlugin<SecureCredentialsPlugin>("SecureCredentials") };
+  return pluginRef;
 }
 
 /** In-memory cache so provider calls don't hit the native bridge on
@@ -100,7 +133,7 @@ export async function loadCredentials(): Promise<Record<string, string>> {
   if (!isStandalone()) return {};
   if (cache) return cache;
   try {
-    cache = await (await plugin()).getAll();
+    cache = await (await plugin()).api.getAll();
   } catch (err) {
     // Deliberately does NOT cache the empty result. Caching {} here would
     // turn one transient failure (e.g. the bridge not being ready during
@@ -120,7 +153,7 @@ export async function diagnoseCredentialStore(): Promise<CredentialStoreHealth> 
     return { ok: true, detail: "Not applicable — the web build keeps credentials server-side." };
   }
   try {
-    return await (await plugin()).diagnose();
+    return await (await plugin()).api.diagnose();
   } catch (err) {
     return {
       ok: false,
@@ -142,7 +175,25 @@ export async function getCredentialStatus(): Promise<Record<string, boolean>> {
   if (!isStandalone()) return {};
   // Intentionally NOT caught: an unreachable store must not masquerade as
   // "nothing is configured". Callers surface the failure instead.
-  return await (await plugin()).getStatus();
+  return await (await plugin()).api.getStatus();
+}
+
+/**
+ * When each stored credential was last written and verified.
+ *
+ * Failure is swallowed here — unlike getCredentialStatus, where an error
+ * must surface — because these timestamps are decoration on top of the
+ * real answer. An APK whose native plugin predates this method would
+ * otherwise take the whole Provider Keys screen down with it and report
+ * a working keystore as broken.
+ */
+export async function getCredentialTimestamps(): Promise<Record<string, number>> {
+  if (!isStandalone()) return {};
+  try {
+    return (await (await plugin()).api.getSavedAt()) ?? {};
+  } catch {
+    return {};
+  }
 }
 
 export async function setCredential(key: CredentialKey, value: string): Promise<void> {
@@ -152,14 +203,15 @@ export async function setCredential(key: CredentialKey, value: string): Promise<
   // The native side verifies the write by reading it back before
   // resolving, so reaching here without throwing means the value is
   // genuinely persisted — not merely queued.
-  await (await plugin()).set({ key, value });
+  await (await plugin()).api.set({ key, value });
   cache = null;
 }
 
-export async function clearCredentials(): Promise<void> {
-  if (!isStandalone()) return;
-  await (await plugin()).clearAll();
+export async function clearCredentials(): Promise<ClearResult> {
+  if (!isStandalone()) return { cleared: [], failed: [] };
+  const result = await (await plugin()).api.clearAll();
   cache = null;
+  return { cleared: result?.cleared ?? [], failed: result?.failed ?? [] };
 }
 
 /** Test-only. */
