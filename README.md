@@ -219,6 +219,15 @@ remote-WebView design:
    preferences file is excluded from cloud backup and device transfer, so
    keys never leave the phone. Verified: the built APK contains **zero**
    key-shaped strings.
+
+   The write is deliberately synchronous (`commit()`, not `apply()`) and
+   verified by decrypting the value straight back before the save is
+   reported as successful. `apply()` only *queues* the write, so a
+   backgrounded process killed before the flush loses the key silently —
+   which is exactly the "I saved it and it was gone" failure this must
+   never have. If the keystore is unusable on a device, Settings shows a
+   **KEY STORAGE UNAVAILABLE** banner (backed by the plugin's `diagnose()`
+   round-trip) instead of letting a broken store look like an empty one.
 2. **CORS.** Groq, Azure and AssemblyAI don't send CORS headers for
    arbitrary web origins, so a plain WebView `fetch` to them would be
    blocked. **CapacitorHttp** (built into `@capacitor/core`) patches

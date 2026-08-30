@@ -54,6 +54,17 @@ interface SecureCredentialsPlugin {
   getStatus(): Promise<Record<string, boolean>>;
   set(options: { key: string; value: string }): Promise<{ saved: boolean; cleared: boolean }>;
   clearAll(): Promise<void>;
+  diagnose(): Promise<CredentialStoreHealth>;
+}
+
+/** Result of round-tripping a probe value through the real store. */
+export interface CredentialStoreHealth {
+  ok: boolean;
+  canEncrypt?: boolean;
+  canWrite?: boolean;
+  canReadBack?: boolean;
+  storedCount?: number;
+  detail?: string;
 }
 
 /**
@@ -90,12 +101,35 @@ export async function loadCredentials(): Promise<Record<string, string>> {
   if (cache) return cache;
   try {
     cache = await (await plugin()).getAll();
-  } catch {
-    // A missing/failed plugin must not take down the app — it just
-    // means nothing is configured yet.
-    cache = {};
+  } catch (err) {
+    // Deliberately does NOT cache the empty result. Caching {} here would
+    // turn one transient failure (e.g. the bridge not being ready during
+    // startup) into "no credentials configured" for the rest of the
+    // session, long after the store became reachable.
+    console.warn("[credentials] store unreachable:", err);
+    return {};
   }
   return cache;
+}
+
+/** Round-trips a probe value through the real store so a genuine fault
+ * can be reported as a fault. Without this, a broken keystore, a
+ * rejected write and an empty store are indistinguishable in the UI. */
+export async function diagnoseCredentialStore(): Promise<CredentialStoreHealth> {
+  if (!isStandalone()) {
+    return { ok: true, detail: "Not applicable — the web build keeps credentials server-side." };
+  }
+  try {
+    return await (await plugin()).diagnose();
+  } catch (err) {
+    return {
+      ok: false,
+      detail:
+        err instanceof Error
+          ? `The secure credential store isn't reachable: ${err.message}`
+          : "The secure credential store isn't reachable.",
+    };
+  }
 }
 
 export async function getCredential(key: CredentialKey): Promise<string | null> {
@@ -106,15 +140,18 @@ export async function getCredential(key: CredentialKey): Promise<string | null> 
 
 export async function getCredentialStatus(): Promise<Record<string, boolean>> {
   if (!isStandalone()) return {};
-  try {
-    return await (await plugin()).getStatus();
-  } catch {
-    return {};
-  }
+  // Intentionally NOT caught: an unreachable store must not masquerade as
+  // "nothing is configured". Callers surface the failure instead.
+  return await (await plugin()).getStatus();
 }
 
 export async function setCredential(key: CredentialKey, value: string): Promise<void> {
-  if (!isStandalone()) return;
+  if (!isStandalone()) {
+    throw new Error("Credentials can only be stored in the Android app.");
+  }
+  // The native side verifies the write by reading it back before
+  // resolving, so reaching here without throwing means the value is
+  // genuinely persisted — not merely queued.
   await (await plugin()).set({ key, value });
   cache = null;
 }

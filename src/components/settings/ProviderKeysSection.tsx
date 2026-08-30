@@ -1,15 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { KeyRound, Check, Trash2 } from "lucide-react";
+import { KeyRound, Check, Trash2, AlertTriangle } from "lucide-react";
 import { SettingRow } from "./SettingRow";
 import {
   CREDENTIAL_GROUPS,
   clearCredentials,
+  diagnoseCredentialStore,
   getCredentialStatus,
   isStandalone,
   setCredential,
   type CredentialKey,
+  type CredentialStoreHealth,
 } from "@/lib/runtime/standalone";
 import { useJarvisStore } from "@/store/jarvisStore";
 import { cn } from "@/lib/utils/cn";
@@ -29,9 +31,29 @@ export function ProviderKeysSection() {
   const [status, setStatus] = useState<Record<string, boolean>>({});
   const [drafts, setDrafts] = useState<Partial<Record<CredentialKey, string>>>({});
   const [busy, setBusy] = useState<CredentialKey | null>(null);
+  const [health, setHealth] = useState<CredentialStoreHealth | null>(null);
 
   const refresh = useCallback(() => {
-    void getCredentialStatus().then(setStatus);
+    getCredentialStatus()
+      .then((next) => {
+        setStatus(next);
+        // Only probe the store when it reports nothing stored — that is
+        // the exact situation where "you haven't entered anything" and
+        // "the store is broken" look identical, and the user deserves to
+        // know which one they're looking at.
+        if (Object.values(next).some(Boolean)) {
+          setHealth(null);
+          return;
+        }
+        void diagnoseCredentialStore().then(setHealth);
+      })
+      .catch((err: unknown) => {
+        setStatus({});
+        setHealth({
+          ok: false,
+          detail: err instanceof Error ? err.message : "The secure credential store isn't reachable.",
+        });
+      });
   }, []);
 
   useEffect(refresh, [refresh]);
@@ -50,7 +72,14 @@ export function ProviderKeysSection() {
       refresh();
       pushToast(value.trim() ? "Key saved on this device." : "Key cleared.", "success", "Providers");
     } catch (err) {
-      pushToast(err instanceof Error ? err.message : "Could not save that key.", "error", "Providers");
+      // The native side only resolves after reading the value back, so a
+      // rejection here means it genuinely did not persist. Say so.
+      pushToast(
+        err instanceof Error ? err.message : "Could not save that key — it was not stored.",
+        "error",
+        "Providers"
+      );
+      void diagnoseCredentialStore().then(setHealth);
     } finally {
       setBusy(null);
     }
@@ -66,6 +95,22 @@ export function ProviderKeysSection() {
   return (
     <div>
       <p className="font-technical mt-6 mb-1 text-[10px] tracking-[0.15em] text-text-muted">PROVIDER KEYS</p>
+      {health && !health.ok && (
+        <div className="mb-3 flex items-start gap-2.5 rounded-xl border border-danger/35 bg-danger/10 px-3 py-2 text-danger">
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" aria-hidden />
+          <div className="min-w-0">
+            <p className="font-technical text-[10px] tracking-[0.2em]">KEY STORAGE UNAVAILABLE</p>
+            <p className="mt-0.5 text-[11px] leading-snug opacity-90">
+              {health.detail ?? "Keys can't be saved on this device right now."}
+            </p>
+            <p className="mt-1 text-[10px] leading-snug opacity-75">
+              Keys entered here would not persist, so this is reported rather than letting a save appear
+              to succeed.
+            </p>
+          </div>
+        </div>
+      )}
+
       <p className="mb-3 text-[11px] leading-snug text-text-muted">
         This app runs entirely on your device — there is no server holding keys for you. Enter your own
         provider keys below and they are encrypted and stored on this device only, excluded from cloud
