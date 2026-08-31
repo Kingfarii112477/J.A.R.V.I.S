@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { LastCrashBanner } from "@/components/diagnostics/LastCrashBanner";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronRight, MessageSquare, Mic, Activity, Radar, Info } from "lucide-react";
@@ -83,6 +84,9 @@ export function Dashboard() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* First thing on the first screen: if the app died last time, say
+          so before anything else, while the reason is still recoverable. */}
+      <LastCrashBanner />
       <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
         <HudPanel className="scanline-sweep flex flex-1 flex-col items-center justify-center overflow-hidden py-2">
           <div

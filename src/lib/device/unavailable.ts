@@ -30,4 +30,5 @@ export const unavailableDeviceProvider: DeviceCapabilityProvider = {
   postNotification: async () => ({ posted: false, reason: NOT_AVAILABLE }),
   // No Activity to launch an intent from off-device.
   openAppSettings: async () => ({ opened: false as const, reason: "Only available in the Android app." }),
+  getLastExitInfo: async () => ({ available: false }),
 };

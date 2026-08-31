@@ -1,6 +1,8 @@
 package com.jarvis.aios
 
 import android.Manifest
+import android.app.ActivityManager
+import android.app.ApplicationExitInfo
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.bluetooth.BluetoothManager
@@ -12,6 +14,7 @@ import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
+import android.util.Log
 import android.provider.Settings
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
@@ -337,5 +340,89 @@ class DeviceCapabilityPlugin : Plugin() {
         } catch (e: Exception) {
             call.resolve(JSObject().put("opened", false).put("reason", e.message ?: "unavailable"))
         }
+    }
+
+    /**
+     * Why the app process died last time, straight from Android.
+     *
+     * Exists because this app has been dying instantly with no dialog, no
+     * Java stack trace and no visible error — the user sees it vanish and
+     * there is nothing to report. Guessing from symptoms has already cost
+     * two wrong diagnoses. ActivityManager keeps the real answer:
+     * getHistoricalProcessExitReasons() records every process death with
+     * its cause, including the ones nothing in the app can catch — a
+     * native (C++) crash, an ANR, or the kernel's low-memory killer.
+     *
+     * Requires API 30. Below that Android keeps no such record, and this
+     * says so rather than inventing one.
+     */
+    @PluginMethod
+    fun getLastExitInfo(call: PluginCall) {
+        val out = JSObject()
+        // A recovered renderer fault leaves no trace in the process-exit
+        // history (the process survived), so it is reported alongside it.
+        try {
+            val diag = context.applicationContext
+                .getSharedPreferences(WebViewRecoveryListener.PREFS, Context.MODE_PRIVATE)
+            val goneAt = diag.getLong(WebViewRecoveryListener.KEY_RENDERER_GONE_AT, 0L)
+            if (goneAt > 0L) {
+                out.put("rendererGoneAt", goneAt)
+                out.put("rendererCrashed", diag.getBoolean(WebViewRecoveryListener.KEY_RENDERER_GONE_CRASHED, false))
+            }
+        } catch (e: Exception) {
+            Log.w("JarvisExitInfo", "Could not read renderer diagnostics", e)
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            call.resolve(out.put("available", false).put("reason", "Android 11 or newer is needed to read exit reasons."))
+            return
+        }
+        try {
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val history = am.getHistoricalProcessExitReasons(context.packageName, 0, 5)
+            val last = history.firstOrNull()
+            if (last == null) {
+                call.resolve(out.put("available", true).put("hasExit", false))
+                return
+            }
+            out.put("available", true)
+            out.put("hasExit", true)
+            out.put("reasonCode", last.reason)
+            out.put("reason", describeExitReason(last.reason))
+            out.put("description", last.description ?: "")
+            out.put("timestamp", last.timestamp)
+            out.put("importance", last.importance)
+            // "Abnormal" is what decides whether the app says anything to
+            // the user: a normal exit or a user-initiated stop is not worth
+            // reporting, a crash or an OOM kill very much is.
+            out.put(
+                "abnormal",
+                last.reason == ApplicationExitInfo.REASON_CRASH ||
+                    last.reason == ApplicationExitInfo.REASON_CRASH_NATIVE ||
+                    last.reason == ApplicationExitInfo.REASON_ANR ||
+                    last.reason == ApplicationExitInfo.REASON_LOW_MEMORY ||
+                    last.reason == ApplicationExitInfo.REASON_SIGNALED ||
+                    last.reason == ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE,
+            )
+            call.resolve(out)
+        } catch (e: Exception) {
+            Log.w("JarvisExitInfo", "Could not read exit reasons", e)
+            call.resolve(out.put("available", false).put("reason", e.message ?: "unavailable"))
+        }
+    }
+
+    private fun describeExitReason(code: Int): String = when (code) {
+        ApplicationExitInfo.REASON_CRASH -> "App crashed (uncaught Java/Kotlin exception)"
+        ApplicationExitInfo.REASON_CRASH_NATIVE -> "Native crash (C/C++ code, e.g. a segfault)"
+        ApplicationExitInfo.REASON_ANR -> "Not responding (ANR)"
+        ApplicationExitInfo.REASON_LOW_MEMORY -> "Killed by the system to reclaim memory"
+        ApplicationExitInfo.REASON_SIGNALED -> "Killed by a signal"
+        ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "Killed for excessive resource use"
+        ApplicationExitInfo.REASON_USER_REQUESTED -> "Closed by the user"
+        ApplicationExitInfo.REASON_USER_STOPPED -> "Force-stopped by the user"
+        ApplicationExitInfo.REASON_DEPENDENCY_DIED -> "A process it depended on died"
+        ApplicationExitInfo.REASON_OTHER -> "Other"
+        ApplicationExitInfo.REASON_EXIT_SELF -> "Exited normally"
+        ApplicationExitInfo.REASON_PERMISSION_CHANGE -> "Restarted after a permission change"
+        else -> "Unknown (code $code)"
     }
 }

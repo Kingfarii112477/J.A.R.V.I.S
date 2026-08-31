@@ -1,6 +1,7 @@
 package com.jarvis.aios
 
 import android.app.Activity
+import android.content.Context
 import android.util.Log
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
@@ -34,6 +35,9 @@ class WebViewRecoveryListener(private val activity: Activity) : WebViewListener(
 
     companion object {
         private const val TAG = "JarvisWebView"
+        const val PREFS = "jarvis_diagnostics"
+        const val KEY_RENDERER_GONE_AT = "renderer_gone_at"
+        const val KEY_RENDERER_GONE_CRASHED = "renderer_gone_crashed"
     }
 
     override fun onRenderProcessGone(webView: WebView?, detail: RenderProcessGoneDetail?): Boolean {
@@ -43,6 +47,21 @@ class WebViewRecoveryListener(private val activity: Activity) : WebViewListener(
             if (crashed) "WebView renderer crashed; recreating the activity"
             else "WebView renderer was killed to reclaim memory; recreating the activity",
         )
+
+        // Recorded because recovering means the process does NOT die, so
+        // Android's process-exit history will hold no evidence that this
+        // ever happened. Without a note here, a successful recovery is
+        // indistinguishable from the fault never occurring.
+        try {
+            activity.applicationContext
+                .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putLong(KEY_RENDERER_GONE_AT, System.currentTimeMillis())
+                .putBoolean(KEY_RENDERER_GONE_CRASHED, crashed)
+                .commit()
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not record the renderer fault", e)
+        }
 
         activity.runOnUiThread {
             // Detach and destroy the dead WebView first: reusing one whose

@@ -1,14 +1,5 @@
 import { registerPlugin } from "@capacitor/core";
-import type {
-  AppLaunchResult,
-  DeepLinkResult,
-  DeviceCapabilityProvider,
-  DeviceStatus,
-  MediaAction,
-  MediaControlResult,
-  NotificationResult,
-  PermissionResult,
-} from "./types";
+import type { AppLaunchResult, DeepLinkResult, DeviceCapabilityProvider, DeviceStatus, MediaAction, MediaControlResult, NotificationResult, PermissionResult, LastExitInfo } from "./types";
 
 /**
  * The raw JS-facing shape of the native Kotlin plugin (see
@@ -28,6 +19,7 @@ interface DeviceCapabilityPluginInterface {
   requestNotificationPermission(): Promise<{ granted: boolean; reason?: string }>;
   postNotification(options: { title: string; body: string }): Promise<{ posted: boolean; reason?: string }>;
   openAppSettings(): Promise<{ opened: boolean; reason?: string }>;
+  getLastExitInfo(): Promise<LastExitInfo>;
 }
 
 const DeviceCapability = registerPlugin<DeviceCapabilityPluginInterface>("DeviceCapability");
@@ -97,4 +89,5 @@ export const nativeDeviceProvider: DeviceCapabilityProvider = {
   postNotification: async (title, body): Promise<NotificationResult> =>
     safe(() => DeviceCapability.postNotification({ title, body }), { posted: false, reason: undefined }),
   openAppSettings: async () => safe(() => DeviceCapability.openAppSettings(), { opened: false }),
+  getLastExitInfo: async () => safe(() => DeviceCapability.getLastExitInfo(), { available: false }),
 };

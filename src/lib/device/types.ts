@@ -53,6 +53,25 @@ export interface PermissionResult {
   reason?: string;
 }
 
+/**
+ * Android's own record of the previous process death. The app cannot
+ * catch a native crash, an ANR or a low-memory kill, so this is the only
+ * way to report one after the fact.
+ */
+export interface LastExitInfo {
+  available: boolean;
+  hasExit?: boolean;
+  reason?: string;
+  reasonCode?: number;
+  description?: string;
+  timestamp?: number;
+  abnormal?: boolean;
+  /** Set when the WebView renderer died and the app recovered from it.
+   * That path leaves no process-exit record, since the process survives. */
+  rendererGoneAt?: number;
+  rendererCrashed?: boolean;
+}
+
 export interface NotificationResult {
   posted: boolean;
   reason?: string;
@@ -77,6 +96,8 @@ export interface DeviceCapabilityProvider {
   /** Opens this app's page in Android system settings. The only route back
    * once a permission has been denied twice and Android stops prompting. */
   openAppSettings(): Promise<{ opened: boolean; reason?: string }>;
+  /** Why the app process died last time, as recorded by Android itself. */
+  getLastExitInfo(): Promise<LastExitInfo>;
   // Microphone permission is deliberately NOT duplicated here — the
   // existing lib/voice/stt/browser.ts requestMicrophonePermission()
   // already calls getUserMedia(), which inside the native Android WebView
